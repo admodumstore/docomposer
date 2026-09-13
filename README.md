@@ -18,9 +18,9 @@ run what this tool builds for you.
 
 ## What it does
 
-- **40+ services** across media, networking, productivity, security,
-  automation and container-management categories, each with real project
-  icons, a homepage link, and searchable tags.
+- **45+ services** across media, networking, productivity, security,
+  monitoring, automation and container-management categories, each with
+  real project icons, a homepage link, and searchable tags.
 - **Search and tag filtering**, plus an "Arr Stack" bundle (Sonarr, Radarr,
   Prowlarr, qBittorrent, SABnzbd, Lidarr, Readarr, a dashboard and a request
   manager) you can add in one click and then exclude individual pieces from.

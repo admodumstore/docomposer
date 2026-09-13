@@ -590,6 +590,264 @@ const SERVICES = {
     environment: { PUID: "1000", PGID: "1000", TZ: "Etc/UTC", PASSWORD: "changeme", SUDO_PASSWORD: "changeme" },
     notes: "Change PASSWORD before first run — it's required to log in to the web UI. SUDO_PASSWORD enables sudo inside the container's terminal.",
   },
+
+  "nginx-proxy-manager": {
+    name: "Nginx Proxy Manager",
+    icon: `${ICON_BASE}/nginx-proxy-manager.svg`,
+    homepage: "https://nginxproxymanager.com/",
+    image: "jc21/nginx-proxy-manager:latest",
+    description: "Reverse proxy with free SSL certificates, managed entirely through a web UI — no config files to hand-edit.",
+    tags: ["network", "proxy", "ssl"],
+    ports: [
+      { container: 80, host: 80, label: "HTTP" },
+      { container: 443, host: 443, label: "HTTPS" },
+      { container: 81, host: 81, label: "Admin UI" },
+    ],
+    volumes: ["./nginx-proxy-manager/data:/data", "./nginx-proxy-manager/letsencrypt:/etc/letsencrypt"],
+    environment: {},
+    notes: "Default login is admin@example.com / changeme — the setup wizard forces a password change on first login, there's no environment variable for it.",
+  },
+
+  traefik: {
+    name: "Traefik",
+    icon: `${ICON_BASE}/traefik.svg`,
+    homepage: "https://traefik.io/traefik/",
+    image: "traefik:latest",
+    description: "Config-driven reverse proxy that auto-discovers routes from Docker labels on your other containers.",
+    tags: ["network", "proxy"],
+    ports: [
+      { container: 80, host: 80, label: "HTTP" },
+      { container: 443, host: 443, label: "HTTPS" },
+      { container: 8080, host: 8080, label: "Dashboard" },
+    ],
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"],
+    environment: {},
+    extraLines: [
+      "command:",
+      '  - "--api.insecure=true"',
+      '  - "--api.dashboard=true"',
+      '  - "--providers.docker=true"',
+      '  - "--providers.docker.exposedbydefault=false"',
+      '  - "--entrypoints.web.address=:80"',
+      '  - "--entrypoints.websecure.address=:443"',
+    ],
+    runCommandArgs: [
+      "--api.insecure=true",
+      "--api.dashboard=true",
+      "--providers.docker=true",
+      "--providers.docker.exposedbydefault=false",
+      "--entrypoints.web.address=:80",
+      "--entrypoints.websecure.address=:443",
+    ],
+    notes: "The dashboard runs unauthenticated (api.insecure=true) for simplicity — fine on a trusted LAN, not something to expose to the internet. Routing another container through Traefik needs traefik.* labels added to that container, which this tool doesn't generate automatically — see Traefik's Docker provider docs.",
+  },
+
+  "adguard-home": {
+    name: "AdGuard Home",
+    icon: `${ICON_BASE}/adguard-home.svg`,
+    homepage: "https://adguard.com/en/adguard-home/overview.html",
+    image: "adguard/adguardhome:latest",
+    description: "Network-wide ad and tracker blocking via DNS, with a built-in DNS-over-HTTPS/TLS server.",
+    tags: ["network", "dns", "adblock"],
+    ports: [
+      { container: 3000, host: 3000, label: "Web UI (setup)" },
+      { container: 53, host: 53, label: "DNS (TCP)", protocol: "tcp" },
+      { container: 53, host: 53, label: "DNS (UDP)", protocol: "udp" },
+    ],
+    volumes: ["./adguardhome/work:/opt/adguardhome/work", "./adguardhome/conf:/opt/adguardhome/conf"],
+    environment: {},
+    notes: "Port 53 must be free on the host, same as Pi-hole — don't run both at once without changing ports. Finish the setup wizard at :3000 on first run; that's also where you'll set the admin login, there's no environment variable for it.",
+  },
+
+  authentik: {
+    name: "Authentik",
+    icon: `${ICON_BASE}/authentik.svg`,
+    homepage: "https://goauthentik.io/",
+    image: "ghcr.io/goauthentik/server:latest",
+    description: "Self-hosted SSO / identity provider — put a single login in front of your other services.",
+    tags: ["security", "network", "passwords"],
+    ports: [
+      { container: 9000, host: 9000, label: "Web UI (HTTP)" },
+      { container: 9443, host: 9443, label: "Web UI (HTTPS)" },
+    ],
+    volumes: ["./authentik/media:/data", "./authentik/custom-templates:/templates"],
+    environment: {
+      AUTHENTIK_SECRET_KEY: "changeme-generate-with-openssl-rand-base64-60",
+      AUTHENTIK_POSTGRESQL__HOST: "authentik-db",
+      AUTHENTIK_POSTGRESQL__NAME: "authentik",
+      AUTHENTIK_POSTGRESQL__USER: "authentik",
+      AUTHENTIK_POSTGRESQL__PASSWORD: "changeme",
+    },
+    extraLines: ["command: server", "shm_size: 512mb"],
+    runExtraArgs: ["--shm-size=512m"],
+    runCommandArgs: ["server"],
+    dependsOn: [
+      {
+        key: "authentik-worker",
+        name: "Authentik Worker (background jobs, for Authentik)",
+        image: "ghcr.io/goauthentik/server:latest",
+        volumes: [
+          "./authentik/media:/data",
+          "./authentik/custom-templates:/templates",
+          "/var/run/docker.sock:/var/run/docker.sock",
+        ],
+        environment: {
+          AUTHENTIK_SECRET_KEY: "changeme-generate-with-openssl-rand-base64-60",
+          AUTHENTIK_POSTGRESQL__HOST: "authentik-db",
+          AUTHENTIK_POSTGRESQL__NAME: "authentik",
+          AUTHENTIK_POSTGRESQL__USER: "authentik",
+          AUTHENTIK_POSTGRESQL__PASSWORD: "changeme",
+        },
+        extraLines: ["command: worker", "user: root", "shm_size: 512mb"],
+        runExtraArgs: ["--user=root", "--shm-size=512m"],
+        runCommandArgs: ["worker"],
+      },
+      {
+        key: "authentik-db",
+        name: "PostgreSQL (for Authentik)",
+        image: "postgres:16-alpine",
+        volumes: ["./authentik/database:/var/lib/postgresql/data"],
+        environment: {
+          POSTGRES_DB: "authentik",
+          POSTGRES_USER: "authentik",
+          POSTGRES_PASSWORD: "changeme",
+        },
+      },
+    ],
+    notes: "This is 3 containers (server, worker, database) — change every 'changeme' value, and make sure AUTHENTIK_POSTGRESQL__PASSWORD and AUTHENTIK_SECRET_KEY are identical between the server and worker sections, matching the database's POSTGRES_PASSWORD. The worker mounts the Docker socket for managing outposts — that grants it full Docker API access, same caution as Homarr/Portracker/DockFlare.",
+  },
+
+  grafana: {
+    name: "Grafana",
+    icon: `${ICON_BASE}/grafana.svg`,
+    homepage: "https://grafana.com/",
+    image: "grafana/grafana:latest",
+    description: "Dashboards and visualization for metrics — pairs with Prometheus, included as a companion container below.",
+    tags: ["monitoring"],
+    ports: [{ container: 3000, host: 3000, label: "Web UI" }],
+    volumes: ["./grafana/data:/var/lib/grafana"],
+    environment: { GF_SECURITY_ADMIN_PASSWORD: "changeme" },
+    dependsOn: [
+      {
+        key: "prometheus",
+        name: "Prometheus (for Grafana)",
+        image: "prom/prometheus:latest",
+        volumes: ["./prometheus/data:/prometheus", "./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"],
+        environment: {},
+      },
+    ],
+    notes: "Prometheus needs a prometheus.yml file at ./prometheus/prometheus.yml before it will start — even a minimal 'scrape_configs: []' works to get it running, then point it at exporters you add later. In Grafana, add Prometheus as a data source using http://prometheus:9090.",
+  },
+
+  syncthing: {
+    name: "Syncthing",
+    icon: `${ICON_BASE}/syncthing.svg`,
+    homepage: "https://syncthing.net/",
+    image: "syncthing/syncthing:latest",
+    description: "Peer-to-peer file sync directly between your own devices — no cloud, no middleman server.",
+    tags: ["files", "backup", "cloud"],
+    ports: [
+      { container: 8384, host: 8384, label: "Web UI" },
+      { container: 22000, host: 22000, label: "Sync (TCP)", protocol: "tcp" },
+      { container: 22000, host: 22000, label: "Sync (UDP)", protocol: "udp" },
+      { container: 21027, host: 21027, label: "Discovery (UDP)", protocol: "udp" },
+    ],
+    volumes: ["./syncthing/config:/var/syncthing/config", "./syncthing/data:/var/syncthing/data"],
+    environment: { PUID: "1000", PGID: "1000" },
+    notes: "",
+  },
+
+  "speedtest-tracker": {
+    name: "Speedtest Tracker",
+    icon: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/speedtest-tracker.png",
+    homepage: "https://github.com/alexjustesen/speedtest-tracker",
+    image: "lscr.io/linuxserver/speedtest-tracker:latest",
+    description: "Runs periodic internet speed tests and charts the results over time.",
+    tags: ["monitoring", "network"],
+    ports: [{ container: 80, host: 8765, label: "Web UI" }],
+    volumes: ["./speedtest-tracker/config:/config"],
+    environment: { PUID: "1000", PGID: "1000", TZ: "Etc/UTC", APP_KEY: "changeme-generate-a-laravel-app-key" },
+    notes: "Generate APP_KEY with `docker exec speedtest-tracker php artisan key:generate --show` after first start (or any base64 32-byte value) — the app won't run correctly with the placeholder left in place.",
+  },
+
+  homepage: {
+    name: "Homepage",
+    icon: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/homepage.png",
+    homepage: "https://gethomepage.dev/",
+    image: "ghcr.io/gethomepage/homepage:latest",
+    description: "Fast, YAML-configured start page dashboard for links to all your other services.",
+    tags: ["dashboard"],
+    ports: [{ container: 3000, host: 3000, label: "Web UI" }],
+    volumes: ["./homepage/config:/app/config"],
+    environment: {},
+    notes: "Configured entirely through YAML files inside ./homepage/config after first run, not through this tool. For Docker-based service widgets, also mount /var/run/docker.sock:/var/run/docker.sock (optional, grants host-level access).",
+  },
+
+  audiobookshelf: {
+    name: "Audiobookshelf",
+    icon: `${ICON_BASE}/audiobookshelf.svg`,
+    homepage: "https://www.audiobookshelf.org/",
+    image: "ghcr.io/advplyr/audiobookshelf:latest",
+    description: "Self-hosted server for audiobooks and podcasts, with a companion mobile app.",
+    tags: ["media", "books"],
+    ports: [{ container: 80, host: 13378, label: "Web UI" }],
+    volumes: [
+      "./audiobookshelf/config:/config",
+      "./audiobookshelf/metadata:/metadata",
+      "./audiobooks:/audiobooks",
+      "./podcasts:/podcasts",
+    ],
+    environment: { TZ: "Etc/UTC" },
+    notes: "",
+  },
+
+  gitea: {
+    name: "Gitea",
+    icon: `${ICON_BASE}/gitea.svg`,
+    homepage: "https://about.gitea.com/",
+    image: "gitea/gitea:latest",
+    description: "Lightweight self-hosted Git hosting — a personal GitHub, with issues, PRs and a package registry.",
+    tags: ["developer", "tools"],
+    ports: [
+      { container: 3000, host: 3000, label: "Web UI" },
+      { container: 22, host: 2222, label: "Git SSH" },
+    ],
+    volumes: ["./gitea/data:/data"],
+    environment: { USER_UID: "1000", USER_GID: "1000" },
+    notes: "SSH is mapped to host port 2222 instead of 22 to avoid clashing with the host's own SSH server — use that port when cloning over SSH (git clone ssh://git@host:2222/...).",
+  },
+
+  paperless: {
+    name: "Paperless-ngx",
+    icon: `${ICON_BASE}/paperless-ngx.svg`,
+    homepage: "https://docs.paperless-ngx.com/",
+    image: "ghcr.io/paperless-ngx/paperless-ngx:latest",
+    description: "Scans, OCRs and indexes documents so they're searchable and archived — drop a file in a folder, it does the rest.",
+    tags: ["productivity", "documents", "files"],
+    ports: [{ container: 8000, host: 8000, label: "Web UI" }],
+    volumes: [
+      "./paperless/data:/usr/src/paperless/data",
+      "./paperless/media:/usr/src/paperless/media",
+      "./paperless/export:/usr/src/paperless/export",
+      "./paperless/consume:/usr/src/paperless/consume",
+    ],
+    environment: {
+      PAPERLESS_REDIS: "redis://paperless-redis:6379",
+      PAPERLESS_TIME_ZONE: "Etc/UTC",
+      PAPERLESS_ADMIN_USER: "admin",
+      PAPERLESS_ADMIN_PASSWORD: "changeme",
+    },
+    dependsOn: [
+      {
+        key: "paperless-redis",
+        name: "Redis (for Paperless-ngx)",
+        image: "redis:7-alpine",
+        volumes: [],
+        environment: {},
+      },
+    ],
+    notes: "Drop files into ./paperless/consume and Paperless-ngx automatically scans, OCRs and files them away.",
+  },
 };
 
 // Bundles of related services the picker can toggle as one unit — see
@@ -860,6 +1118,11 @@ function buildRunCommand(key, def, ports, networkName, volumeOverrides, extraVol
   }
 
   args.push(def.image);
+
+  // Trailing args after the image — a command override (e.g. authentik's
+  // "server"/"worker", or Traefik's static-config flags), unlike
+  // runExtraArgs above which are docker run *flags* and must come first.
+  for (const a of def.runCommandArgs || []) args.push(a);
 
   return args.map((a, i) => (i === 0 ? a : `  ${a}`)).join(" \\\n");
 }
