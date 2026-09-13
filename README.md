@@ -2,6 +2,9 @@
 
 ![DoComposer screenshot](DoComposer.png)
 
+**[Try it live](https://admodumstore.github.io/docomposer/)** — runs entirely
+in your browser, nothing to install just to take a look.
+
 **A friendly starting point if you're new to Docker.** Pick a few self-hosted
 services from a checklist, get back a working `docker-compose.yml` (or the
 equivalent `docker run` commands, if you'd rather see exactly what's
@@ -12,9 +15,13 @@ It's not trying to replace hand-writing compose files once you know what
 you're doing — it's meant to save the hour of copy-pasting, typo-hunting,
 and looking up "what port does Jellyfin use again?" that comes with wiring
 up more than one container by hand, especially while you're still learning.
-New to Docker entirely? Start with [`guide.html`](guide.html) — a short,
-practical intro to what Docker is, how to install it, and how to actually
-run what this tool builds for you.
+New to Docker entirely? Start with the
+[in-app guide](https://admodumstore.github.io/docomposer/guide.html) — a
+short, practical intro to what Docker is, how to install it, and how to
+actually run what this tool builds for you. (The live-host-port-checking
+feature needs the Docker container running to work — see
+[below](#live-host-port-checking-optional) — everything else works fine on
+the live demo above.)
 
 ## What it does
 
