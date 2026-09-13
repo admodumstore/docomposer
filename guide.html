@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Guide — DoComposer</title>
+<script src="theme.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.46.0/tabler-icons.min.css">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body class="guide-page">
+
+  <header class="rack-label">
+    <div class="rack-label__topbar">
+      <button type="button" id="theme-toggle" class="text-link" aria-pressed="false">
+        <i class="ti ti-moon" aria-hidden="true"></i> Dark mode
+      </button>
+      <span aria-hidden="true">·</span>
+      <a class="text-link" href="index.html">
+        <i class="ti ti-arrow-left" aria-hidden="true"></i> Back to the builder
+      </a>
+    </div>
+    <div class="rack-label__main">
+      <svg class="rack-label__logo" width="56" height="56" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DoComposer logo">
+        <rect width="40" height="40" rx="10" fill="var(--accent)" />
+        <rect x="9" y="20" width="10" height="10" rx="2" fill="#FFC145" />
+        <rect x="21" y="20" width="10" height="10" rx="2" fill="#FF6B6B" />
+        <rect x="15" y="9" width="10" height="10" rx="2" fill="#FFFFFF" />
+      </svg>
+      <div>
+        <h1>New to Docker? Start here.</h1>
+        <p>A short, practical intro — what Docker is, how to install it, and how to run the files this tool builds for you.</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="guide">
+
+    <aside class="guide-sidebar">
+      <nav class="guide-toc" aria-label="On this page">
+        <a href="#what-is-docker">What is Docker?</a>
+        <a href="#install">Installing Docker</a>
+        <a href="#using-compose">Running a docker-compose.yml</a>
+        <a href="#using-run">Running a docker run script</a>
+        <a href="#open-in-browser">Opening your app in a browser</a>
+        <a href="#port-checking">Checking for port conflicts</a>
+        <a href="#gui-options">GUI options (no terminal)</a>
+        <a href="#next-steps">Common next steps</a>
+      </nav>
+
+      <div class="coffee-callout">
+        <p>If this saved you some typing, a coffee's always appreciated — never required.</p>
+        <a href="https://www.buymeacoffee.com/admodum" target="_blank" rel="noopener">
+          <img
+            src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png"
+            alt="Buy me a coffee"
+            height="42"
+          />
+        </a>
+      </div>
+    </aside>
+
+    <div class="guide-scroll">
+
+    <section class="guide-section" id="what-is-docker">
+      <h2>What is Docker?</h2>
+      <p>
+        Normally, installing a piece of software means it gets tangled up with everything else on your
+        computer — shared libraries, specific versions, config files scattered around. Docker sidesteps
+        that by packaging an application together with everything it needs into a single, self-contained
+        unit called a <strong>container</strong>. A container behaves the same on your machine as it does
+        on anyone else's, because it's not relying on whatever happens to already be installed there.
+      </p>
+      <p>
+        Each service you pick in this tool — Nextcloud, Pi-hole, Jellyfin, whatever — runs in its own
+        container. Containers are cheap to create and destroy: if something goes wrong, you can throw one
+        away and start fresh without it having touched anything else on your system. That's why Docker is
+        so popular for homelabs — you can run a dozen different services on one machine without them
+        interfering with each other.
+      </p>
+      <p>
+        This tool generates the two things Docker needs to start a container: a
+        <strong>docker-compose.yml</strong> file (a recipe describing which containers to run and how they're
+        configured) and an <strong>.env</strong> file (the settings that recipe fills in, like passwords and
+        folder paths). It can also generate the equivalent as a set of plain <strong>docker run</strong>
+        commands, if you'd rather see exactly what's happening step by step.
+      </p>
+    </section>
+
+    <section class="guide-section" id="install">
+      <h2>Installing Docker</h2>
+      <p>You only need to do this once per machine. Pick your OS:</p>
+
+      <h3>Windows</h3>
+      <ol>
+        <li>Requires Windows 10/11 (64-bit) with WSL2, which the installer sets up for you if it's missing.</li>
+        <li>Install <strong>Docker Desktop</strong> — search "Docker Desktop" from Docker's official site, or start at
+          <a href="https://docs.docker.com/get-started/get-docker/" target="_blank" rel="noopener noreferrer">docs.docker.com/get-started/get-docker</a>
+          and follow the Windows instructions there.</li>
+        <li>Launch Docker Desktop and wait for it to say "Docker Desktop is running" (the whale icon in your system tray stops animating).</li>
+        <li>Open a terminal (PowerShell, Windows Terminal, or WSL) and run <code>docker --version</code> to confirm it's working.</li>
+      </ol>
+
+      <h3>macOS</h3>
+      <ol>
+        <li>Install <strong>Docker Desktop for Mac</strong> from the same
+          <a href="https://docs.docker.com/get-started/get-docker/" target="_blank" rel="noopener noreferrer">docs.docker.com/get-started/get-docker</a>
+          page — pick the Apple Silicon or Intel build depending on your Mac.</li>
+        <li>Open Docker from Applications and wait for the whale icon in the menu bar to settle.</li>
+        <li>Open Terminal and run <code>docker --version</code> to confirm it's working.</li>
+      </ol>
+
+      <h3>Linux</h3>
+      <ol>
+        <li>Linux doesn't need Docker Desktop — just the Docker Engine. The most reliable way is your
+          distro's own package manager; see
+          <a href="https://docs.docker.com/engine/install/" target="_blank" rel="noopener noreferrer">docs.docker.com/engine/install</a>
+          for exact steps per distro.</li>
+        <li>For a quick setup on most distros, Docker also publishes a convenience script:
+          <pre><code>curl -fsSL https://get.docker.com | sh</code></pre>
+        </li>
+        <li>Add your user to the <code>docker</code> group so you don't need <code>sudo</code> for every command,
+          then log out and back in for it to take effect:
+          <pre><code>sudo usermod -aG docker $USER</code></pre>
+        </li>
+        <li>Make sure Docker starts on boot:
+          <pre><code>sudo systemctl enable --now docker</code></pre>
+        </li>
+        <li>Confirm it's working: <code>docker --version</code> and <code>docker compose version</code>.</li>
+      </ol>
+    </section>
+
+    <section class="guide-section" id="using-compose">
+      <h2>Running a docker-compose.yml (recommended)</h2>
+      <p>This is the easiest way to manage the services you build here — one file, one set of commands.</p>
+      <ol>
+        <li>Pick your services on the main page, adjust anything you need in <strong>Settings</strong>, then click
+          <strong>Download compose file</strong> and <strong>Download .env</strong> (or <strong>Download all as .zip</strong>
+          if you're using "Separate file per service").</li>
+        <li>
+          Create a new, empty folder somewhere you'll find it again — for example a <code>homelab</code> folder in
+          your Documents, with one sub-folder per service so their files don't mix (<code>homelab/nextcloud</code>,
+          <code>homelab/pihole</code>, and so on). Both downloaded files land in your browser's default Downloads
+          folder, so move <code>docker-compose.yml</code> and <code>.env</code> from there into the new folder:
+          <ul>
+            <li><strong>Windows:</strong> open File Explorer, go to <code>Downloads</code>, select both files,
+              right-click → <strong>Cut</strong>, then open your new folder and right-click → <strong>Paste</strong>.
+              Dragging both files across works just as well.</li>
+            <li><strong>macOS:</strong> open Finder, go to <code>Downloads</code>, select both files, press
+              <code>⌘C</code> to copy, then open the new folder and press <code>⌘⌥V</code> (Cmd+Option+V) to
+              paste the files there and remove them from Downloads.</li>
+            <li><strong>Linux:</strong> drag them across in your file manager the same way, or from a terminal
+              (adjust the paths to match your folder names):
+              <pre><code>mv ~/Downloads/docker-compose.yml ~/Downloads/.env ~/homelab/nextcloud/</code></pre>
+            </li>
+          </ul>
+          <div class="guide-tip">
+            <strong>Heads up:</strong> because <code>.env</code> starts with a dot, Finder and most Linux file
+            managers treat it as a hidden file and won't list it by default. If it seems to have vanished after
+            moving files, toggle hidden files on — <code>⌘⇧.</code> (Cmd+Shift+Period) in Finder, or
+            <code>Ctrl+H</code> in most Linux file managers. Windows File Explorer shows it normally, no extra
+            step needed there.
+          </div>
+        </li>
+        <li>Open a terminal in that folder and start everything:
+          <pre><code>docker compose up -d</code></pre>
+          The <code>-d</code> runs it in the background so your terminal is free afterward.
+        </li>
+        <li>Check that things are running:
+          <pre><code>docker compose ps</code></pre>
+        </li>
+        <li>Watch the logs if something looks wrong:
+          <pre><code>docker compose logs -f</code></pre>
+          (<code>Ctrl+C</code> to stop watching — this doesn't stop the containers.)
+        </li>
+        <li>Stop everything when you're done:
+          <pre><code>docker compose down</code></pre>
+          Your data stays on disk in the folders this tool set up. Add <code>-v</code> only if you also want to
+          delete that data — <strong>this is permanent</strong>, so only use it if you mean it.
+        </li>
+      </ol>
+    </section>
+
+    <section class="guide-section" id="using-run">
+      <h2>Running a docker run script</h2>
+      <p>
+        Each output card also has a <strong>docker run</strong> tab next to the compose file — the same setup,
+        written as plain commands instead of a compose recipe. It's more manual, but it's a good way to see
+        exactly what Docker is doing under the hood, which can help while you're still learning.
+      </p>
+      <ol>
+        <li>Download the <strong>.env</strong> file the same way as above.</li>
+        <li>Click the <strong>docker run</strong> tab, copy its contents, and save them into a file named
+          <code>run.sh</code> in the same folder as the <code>.env</code> file.</li>
+        <li>Make the script executable (Linux/macOS, or WSL/Git Bash on Windows):
+          <pre><code>chmod +x run.sh</code></pre>
+        </li>
+        <li>Run it:
+          <pre><code>./run.sh</code></pre>
+        </li>
+        <li>To stop a container started this way: <code>docker stop &lt;container-name&gt;</code>, and
+          <code>docker rm &lt;container-name&gt;</code> to remove it afterward. Compose does both of these for
+          every container at once with a single <code>docker compose down</code> — one of the reasons it's the
+          easier option once you're comfortable with the basics.</li>
+      </ol>
+    </section>
+
+    <section class="guide-section" id="open-in-browser">
+      <h2>Opening your app in a browser</h2>
+      <p>
+        Once a container is running, most services (anything this tool labels <strong>"Web UI"</strong> in its
+        port list) are just a normal website running on your machine. You reach them the same way you'd reach
+        any other site — by typing an address into your browser — except the address points at a port number
+        instead of a domain name.
+      </p>
+      <ol>
+        <li>
+          Find the host port next to "Web UI" in the compose file this tool generated — for example, Jellyfin
+          publishes on port <code>8096</code> by default.
+        </li>
+        <li>
+          <strong>If your browser is on the same machine Docker is running on</strong>, go to
+          <code>http://localhost:8096</code> (swap in whatever port your service uses).
+        </li>
+        <li>
+          <strong>If you're connecting from another device</strong> — your phone, another computer on the same
+          Wi-Fi — use that machine's local IP address instead of <code>localhost</code>, e.g.
+          <code>http://192.168.1.20:8096</code>. Find the IP address on the machine running Docker:
+          <ul>
+            <li><strong>Windows:</strong> open Command Prompt and run <code>ipconfig</code> — look for "IPv4 Address".</li>
+            <li><strong>macOS:</strong> System Settings → Wi-Fi/Network → Details, or run
+              <code>ipconfig getifaddr en0</code> in Terminal.</li>
+            <li><strong>Linux:</strong> run <code>hostname -I</code> or <code>ip addr</code> in a terminal.</li>
+          </ul>
+        </li>
+      </ol>
+      <div class="guide-tip">
+        <strong>Not every service has a Web UI.</strong> Things like a database (MariaDB, Redis, Postgres) or a
+        VPN client (Gluetun, Tailscale) are meant to be used by other containers, not opened directly in a
+        browser — that's expected, not a sign something's broken.
+      </div>
+    </section>
+
+    <section class="guide-section" id="port-checking">
+      <h2>Checking for port conflicts with what's already running</h2>
+      <p>
+        The builder already catches port conflicts <em>among the services you're picking</em> — if two of them
+        both want port 80, it moves one and shows a warning. If you're self-hosting this tool with the Docker
+        socket mounted in (already set up if you deployed it with the compose file this project ships), it goes
+        a step further: a small line above the "One combined file" / "Separate file per service" toggle shows
+        how many ports are currently in use on that host, and any service you pick that collides with one of
+        them gets moved and flagged too — the warning names the actual running container, not just "already
+        taken".
+      </p>
+      <p>
+        If that line instead says port checking is unavailable, the socket isn't mounted for this container.
+        Add it to this tool's own <code>docker-compose.yml</code>:
+      </p>
+      <pre><code>services:
+  compose-builder:
+    # ...
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock</code></pre>
+      <div class="guide-tip">
+        <strong>Same trust rule as Dockge and Portainer above.</strong> Mounting the Docker socket — even
+        without write access — gives this container the ability to see (and, since a mount doesn't actually
+        restrict which API calls go through it, potentially do more than just see) everything on the host.
+        Only run it somewhere you trust, same as any other tool that asks for this.
+      </div>
+    </section>
+
+    <section class="guide-section" id="gui-options">
+      <h2>You don't have to live in the terminal</h2>
+      <p>
+        Everything above — starting, stopping, checking logs — can also be done by clicking around a web page
+        instead of typing commands, if that feels more comfortable while you're getting started. Two popular
+        options, from simplest to most capable:
+      </p>
+
+      <h3>Dockge — a friendly stack manager</h3>
+      <p>
+        <a href="https://github.com/louislam/dockge" target="_blank" rel="noopener noreferrer">Dockge</a> gives
+        you a simple dashboard: paste in a compose file (like the one this tool generates), give it a name, and
+        click <em>Deploy</em>. From there, starting, stopping, and viewing logs for that stack is a button
+        click instead of a command.
+      </p>
+      <figure class="guide-illustration">
+        <img src="dockge-demo.gif" alt="Animated demo of the Dockge dashboard: a list of docker-compose stacks that can be started, stopped and edited with a click." loading="lazy" />
+        <figcaption>
+          The real Dockge dashboard in action — from
+          <a href="https://github.com/louislam/dockge" target="_blank" rel="noopener noreferrer">its GitHub page</a>.
+        </figcaption>
+      </figure>
+      <p>
+        Installing Dockge works the same way as everything else in this tool:
+        <a href="index.html?select=dockge">select Dockge in the builder</a>, download its
+        <code>docker-compose.yml</code> and <code>.env</code>, and deploy it with
+        <code>docker compose up -d</code> one last time (see "Running a docker-compose.yml" above). It needs
+        the Docker socket mounted to see and control other containers — this tool's generated compose file
+        already includes that, but it does mean Dockge has root-level access to your host, so only run it
+        somewhere you trust.
+      </p>
+
+      <h3>Portainer — the full toolbox</h3>
+      <p>
+        <a href="https://www.portainer.io/" target="_blank" rel="noopener noreferrer">Portainer</a> covers more
+        ground: every container, image, volume and network on the host, not just compose stacks, plus things
+        like resource usage and multi-host management. It has a steeper learning curve than Dockge, but it's
+        the more common choice once you're managing more than a couple of services.
+      </p>
+      <figure class="guide-illustration">
+        <img src="portainer.gif" alt="Screenshot of the Portainer dashboard, showing a list of managed environments with their status, resource usage and container counts." loading="lazy" />
+        <figcaption>
+          The real Portainer dashboard — from
+          <a href="https://www.portainer.io/" target="_blank" rel="noopener noreferrer">its official site</a>.
+        </figcaption>
+      </figure>
+      <p>
+        Same idea as Dockge: <a href="index.html?select=portainer">select Portainer in the builder</a>, download
+        its files, and deploy it with <code>docker compose up -d</code>. It also needs the Docker socket
+        mounted, so the same "only run it somewhere you trust" caution applies.
+      </p>
+
+      <div class="guide-tip">
+        <strong>Both of these are one terminal session away from never needing the terminal again</strong> — once
+        Dockge or Portainer is running, you can manage it, and everything else you deploy afterward, entirely
+        from your browser.
+      </div>
+    </section>
+
+    <section class="guide-section" id="next-steps">
+      <h2>Common next steps</h2>
+      <ul>
+        <li><strong>"Permission denied" running docker on Linux</strong> — you likely skipped adding your user to
+          the <code>docker</code> group above, or haven't logged out and back in since. <code>sudo</code> the
+          command as a workaround in the meantime.</li>
+        <li><strong>A port warning appeared on the page</strong> — this tool checks for host ports two services
+          would otherwise both try to use, and automatically moves the conflicting one. The yellow banner tells
+          you exactly what changed, so double check it matches what you expect.</li>
+        <li><strong>Updating a service later</strong> — pull the newest image and recreate the container:
+          <pre><code>docker compose pull
+docker compose up -d</code></pre>
+        </li>
+        <li><strong>Starting over cleanly</strong> — <code>docker compose down -v</code> removes the containers
+          <em>and</em> their data volumes. Only run this if you're fine losing everything that service stored.</li>
+        <li><strong>Changing a setting after you've already started a container</strong> — edit the <code>.env</code>
+          file (or the compose file, for anything not exposed as a variable), then run
+          <code>docker compose up -d</code> again; Docker only recreates the containers whose configuration
+          actually changed.</li>
+      </ul>
+    </section>
+
+    <a class="text-link guide-back-bottom" href="index.html"><i class="ti ti-arrow-left" aria-hidden="true"></i> Back to the builder</a>
+
+    </div>
+
+  </main>
+
+</body>
+</html>

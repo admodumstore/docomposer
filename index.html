@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DoComposer — Docker Compose Builder</title>
+<script src="theme.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.46.0/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header class="rack-label">
+    <div class="rack-label__topbar">
+      <button type="button" id="theme-toggle" class="text-link" aria-pressed="false">
+        <i class="ti ti-moon" aria-hidden="true"></i> Dark mode
+      </button>
+      <span aria-hidden="true">·</span>
+      <a class="text-link" href="guide.html">
+        <i class="ti ti-help-circle" aria-hidden="true"></i> New to Docker? Start here
+      </a>
+    </div>
+    <div class="rack-label__main">
+      <svg class="rack-label__logo" width="56" height="56" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DoComposer logo">
+        <rect width="40" height="40" rx="10" fill="var(--accent)" />
+        <rect x="9" y="20" width="10" height="10" rx="2" fill="#FFC145" />
+        <rect x="21" y="20" width="10" height="10" rx="2" fill="#FF6B6B" />
+        <rect x="15" y="9" width="10" height="10" rx="2" fill="#FFFFFF" />
+      </svg>
+      <div>
+        <h1>DoComposer</h1>
+        <p class="rack-label__subtitle">Docker Compose Builder</p>
+        <p>
+          A friendly starting point if you're new to Docker: pick a few self-hosted services, get a working
+          <code>docker-compose.yml</code> back, and skip the hour of copy-pasting and typo-hunting it usually takes
+          to wire up more than one container by hand. Every port, volume and environment variable is editable
+          before you download anything, and it warns you about port conflicts with containers already running
+          on this host. No sign-up, nothing stored.
+        </p>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <section class="panel panel--tags" aria-labelledby="tags-heading">
+      <h2 id="tags-heading">Tags</h2>
+      <div class="tag-filter" id="tag-filter" role="group" aria-label="Filter by tag"></div>
+
+      <div class="coffee-callout">
+        <p>If this saved you some typing, a coffee's always appreciated — never required.</p>
+        <a href="https://www.buymeacoffee.com/admodum" target="_blank" rel="noopener">
+          <img
+            src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png"
+            alt="Buy me a coffee"
+            height="42"
+          />
+        </a>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="pick-heading">
+      <div class="panel-heading-row">
+        <h2 id="pick-heading">Services</h2>
+        <div class="select-all-toolbar">
+          <button type="button" id="select-toggle-btn" class="tag tag--filterable">Select all</button>
+          <button type="button" id="show-selected-btn" class="tag tag--filterable">Show selected</button>
+        </div>
+      </div>
+      <div class="service-search">
+        <i class="ti ti-search" aria-hidden="true"></i>
+        <input type="search" id="service-search" placeholder="Search by name or tag…" aria-label="Search services" />
+      </div>
+      <ul class="service-list" id="service-list"></ul>
+    </section>
+
+    <section class="panel panel--output" aria-labelledby="output-heading">
+      <h2 id="output-heading">Output</h2>
+
+      <p id="host-port-status" class="host-port-status" hidden></p>
+
+      <div class="mode-toggle" role="radiogroup" aria-label="File layout">
+        <button type="button" class="file-tab is-active" id="mode-combined" role="radio" aria-checked="true">
+          One combined file
+        </button>
+        <button type="button" class="file-tab" id="mode-separate" role="radio" aria-checked="false">
+          Separate file per service
+        </button>
+      </div>
+
+      <div id="warnings" class="warnings" hidden></div>
+
+      <div id="settings-block" class="file-block" hidden>
+        <div class="file-block__head"><div class="file-tabs"><span class="file-tab is-active">Settings</span></div></div>
+        <div id="settings-list" class="settings-list"></div>
+      </div>
+
+      <div id="output-files"></div>
+
+      <div id="notes" class="notes" hidden></div>
+
+      <div class="actions" id="actions-combined">
+        <button id="download-compose" class="btn btn--primary">
+          <i class="ti ti-download" aria-hidden="true"></i> Download compose file
+        </button>
+        <button id="download-env" class="btn btn--primary">
+          <i class="ti ti-download" aria-hidden="true"></i> Download .env
+        </button>
+      </div>
+
+      <div class="actions" id="actions-separate" hidden>
+        <button id="download-zip" class="btn btn--primary">
+          <i class="ti ti-download" aria-hidden="true"></i> Download all as .zip
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="custom-tooltip" class="custom-tooltip" role="tooltip" hidden></div>
+
+  <script src="services.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

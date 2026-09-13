@@ -1,0 +1,16 @@
+services:
+  compose-builder:
+    build: .
+    container_name: docomposer
+    restart: unless-stopped
+    ports:
+      - "8190:80"
+    volumes:
+      # Lets the port poller see currently-running containers' published
+      # ports, so the builder can warn about conflicts with them too — not
+      # just conflicts among the services you're about to add. Note: a
+      # bind-mounted socket carries full Docker API access regardless of
+      # this mount having no :ro flag or not — filesystem read-only doesn't
+      # restrict which API calls go over the socket. Only run this on a
+      # trusted host, same caution as Portainer/Dockge/Portracker.
+      - /var/run/docker.sock:/var/run/docker.sock

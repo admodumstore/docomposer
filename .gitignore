@@ -1,0 +1,11 @@
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Editor cruft
+*.swp
+.vscode/
+.idea/
+
+# Generated at runtime inside the container, not part of the source
+live-ports.json
