@@ -4,24 +4,30 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Guide — DoComposer</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <script src="theme.js"></script>
+<script src="nav.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.46.0/tabler-icons.min.css">
 <link rel="stylesheet" href="style.css" />
 </head>
-<body class="guide-page">
+<body class="guide-page" data-page="guide">
+
+  <nav class="app-tabs">
+    <div class="app-tabs__list">
+      <a href="index.html" class="app-tab">Builder</a>
+      <a href="guide.html" class="app-tab is-active">Guide</a>
+      <a href="dashboard.html" class="app-tab" id="dashboard-tab">Dashboard</a>
+    </div>
+    <button type="button" id="theme-toggle" class="theme-switch" aria-pressed="false" aria-label="Toggle dark mode">
+      <i class="ti ti-sun theme-switch__icon theme-switch__icon--sun" aria-hidden="true"></i>
+      <span class="theme-switch__track"><span class="theme-switch__knob"></span></span>
+      <i class="ti ti-moon theme-switch__icon theme-switch__icon--moon" aria-hidden="true"></i>
+    </button>
+  </nav>
 
   <header class="rack-label">
-    <div class="rack-label__topbar">
-      <button type="button" id="theme-toggle" class="text-link" aria-pressed="false">
-        <i class="ti ti-moon" aria-hidden="true"></i> Dark mode
-      </button>
-      <span aria-hidden="true">·</span>
-      <a class="text-link" href="index.html">
-        <i class="ti ti-arrow-left" aria-hidden="true"></i> Back to the builder
-      </a>
-    </div>
     <div class="rack-label__main">
       <svg class="rack-label__logo" width="56" height="56" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DoComposer logo">
         <rect width="40" height="40" rx="10" fill="var(--accent)" />
@@ -46,6 +52,7 @@
         <a href="#using-run">Running a docker run script</a>
         <a href="#open-in-browser">Opening your app in a browser</a>
         <a href="#port-checking">Checking for port conflicts</a>
+        <a href="#deploying">Deploying straight from the browser</a>
         <a href="#gui-options">GUI options (no terminal)</a>
         <a href="#next-steps">Common next steps</a>
       </nav>
@@ -260,14 +267,106 @@
       </p>
       <pre><code>services:
   compose-builder:
-    # ...
+    build: .
+    container_name: docomposer
+    restart: unless-stopped
+    ports:
+      - "8190:80"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock</code></pre>
       <div class="guide-tip">
-        <strong>Same trust rule as Dockge and Portainer above.</strong> Mounting the Docker socket — even
+        <strong>Same trust rule as Dockge and Portainer below.</strong> Mounting the Docker socket — even
         without write access — gives this container the ability to see (and, since a mount doesn't actually
         restrict which API calls go through it, potentially do more than just see) everything on the host.
         Only run it somewhere you trust, same as any other tool that asks for this.
+      </div>
+      <p>
+        Even with the socket mounted, there's one thing the Docker API genuinely can't tell it: ports used by
+        a container running with <code>network_mode: host</code>, or by anything that isn't Docker at all.
+        A second, separately optional mount closes that gap — it lets the poller read the host's real network
+        state directly instead of only asking Docker about it:
+      </p>
+      <pre><code>services:
+  compose-builder:
+    build: .
+    container_name: docomposer
+    restart: unless-stopped
+    ports:
+      - "8190:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /proc:/host/proc:ro</code></pre>
+      <p>
+        It's read-only, and only ever used to read port numbers — but it is more visibility into the host, so
+        it's worth adding deliberately rather than by default.
+      </p>
+    </section>
+
+    <section class="guide-section" id="deploying">
+      <h2>Deploying straight from the browser, and the Dashboard</h2>
+      <p>
+        Next to the Copy button on any <code>docker-compose.yml</code> block, there's a <strong>Deploy</strong>
+        button. When it's visible, clicking it asks for a project name (pre-filled from the service itself),
+        checks whether it's already running under a different name, then runs
+        <code>docker compose up -d</code> for that exact file immediately, on the host this tool itself is
+        running on — no downloading, no pasting into a terminal or another tool. Its output streams into a
+        panel right over the compose text as it happens, stays there until you close it, and a successful
+        deploy adds an <strong>Open</strong> button straight to the new container's web UI. There's also a
+        <strong>Dashboard</strong> tab, listing every container on the host with start/stop/restart/remove/logs
+        and the same kind of direct open link.
+      </p>
+      <p>
+        Both are off by default, and both turn on together from a single setting: <code>DEPLOY_BASE_DIR</code>,
+        a real folder on your host where deployed stacks get written, one subfolder per project name. It has
+        to appear <em>twice</em> — once as the setting itself, once in <code>volumes:</code>, mounted at the
+        exact same path on both sides of the colon. That's not a typo: the paths inside your compose files
+        (like <code>./nextcloud/html</code>) only end up in the right place on your actual host if the
+        container sees that folder at the identical path the host does — the two-input builder below generates
+        both lines together so they can't drift apart.
+      </p>
+      <div class="guide-tip">
+        <strong>There's no login.</strong> Mounting the Docker socket (already required for port checking)
+        already gives this container the ability to start, stop and remove anything on the host — a password
+        in front of Deploy/Dashboard wouldn't add real protection on top of that, so there isn't one. Only set
+        <code>DEPLOY_BASE_DIR</code> on a host or network you actually trust, same rule as the socket mount.
+      </div>
+
+      <div class="compose-builder-widget">
+        <h3>Generate the snippet</h3>
+        <p>Fill in your setup; the exact lines to paste into your own <code>docker-compose.yml</code> update below.</p>
+        <div class="compose-builder-widget__fields">
+          <label>
+            Host port
+            <input type="text" id="self-port" value="8190" inputmode="numeric" />
+          </label>
+          <label class="compose-builder-widget__field--wide">
+            Deploy folder path <span class="compose-builder-widget__optional">(leave blank to keep it off)</span>
+            <input type="text" id="self-deploy-dir" placeholder="/home/youruser/docker-stacks" />
+          </label>
+          <label class="compose-builder-widget__checkbox">
+            <input type="checkbox" id="self-proc-mount" />
+            Also mount <code>/proc</code> (detects ports used by <code>network_mode: host</code> containers)
+          </label>
+        </div>
+        <div class="file-block">
+          <div class="file-block__head">
+            <div class="file-tabs"><span class="file-tab is-active">docker-compose.yml</span></div>
+            <button type="button" class="btn btn--ghost btn--sm" id="self-compose-copy">
+              <i class="ti ti-copy" aria-hidden="true"></i> Copy
+            </button>
+          </div>
+          <pre id="self-compose-output"></pre>
+        </div>
+      </div>
+
+      <div class="guide-tip">
+        <strong>What happens to the files afterward.</strong> They're not temporary — <code>docker-compose.yml</code>
+        and <code>.env</code> stay in <code>DEPLOY_BASE_DIR/&lt;project-name&gt;/</code> after deploying, exactly
+        like a stack you'd set up by hand. You can edit them directly, run <code>docker compose down</code> there
+        yourself later, or point Dockge or Portainer at that same folder to manage it going forward. If a
+        project is already running when you deploy it again, the result banner says so — it's updated in
+        place, not duplicated. The Dashboard isn't limited to what DoComposer deployed, though — it shows and
+        controls every container the socket can see, same reach as Portainer or Dockge.
       </div>
     </section>
 
@@ -352,11 +451,107 @@ docker compose up -d</code></pre>
       </ul>
     </section>
 
-    <a class="text-link guide-back-bottom" href="index.html"><i class="ti ti-arrow-left" aria-hidden="true"></i> Back to the builder</a>
-
     </div>
 
   </main>
+
+  <script>
+    (function () {
+      const portEl = document.getElementById("self-port");
+      const dirEl = document.getElementById("self-deploy-dir");
+      const procEl = document.getElementById("self-proc-mount");
+      const outEl = document.getElementById("self-compose-output");
+      const copyBtn = document.getElementById("self-compose-copy");
+      if (!portEl || !outEl) return;
+
+      function escapeHtml(str) {
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }
+
+      function render() {
+        const port = (portEl.value || "8190").trim() || "8190";
+        const dir = dirEl.value.trim();
+        const withProc = procEl.checked;
+
+        const lines = [];
+        lines.push("services:");
+        lines.push("  compose-builder:");
+        lines.push("    build: .");
+        lines.push("    container_name: docomposer");
+        lines.push("    restart: unless-stopped");
+        lines.push("    ports:");
+        lines.push(`      - "${port}:80"`);
+
+        if (dir) {
+          lines.push("    environment:");
+          lines.push(`      DEPLOY_BASE_DIR: "${dir}"`);
+        } else {
+          lines.push("    # environment:");
+          lines.push('    #   DEPLOY_BASE_DIR: "/home/youruser/docker-stacks" # optional — enables Deploy + Dashboard');
+        }
+
+        lines.push("    volumes:");
+        lines.push("      - /var/run/docker.sock:/var/run/docker.sock");
+        if (dir) {
+          lines.push(`      - ${dir}:${dir}`);
+        } else {
+          lines.push("      #   - /home/youruser/docker-stacks:/home/youruser/docker-stacks");
+        }
+        if (withProc) {
+          lines.push("      - /proc:/host/proc:ro");
+        }
+
+        outEl.innerHTML = escapeHtml(lines.join("\n"));
+      }
+
+      [portEl, dirEl, procEl].forEach((el) => el.addEventListener("input", render));
+      render();
+
+      if (copyBtn) {
+        copyBtn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(outEl.textContent);
+            const original = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i> Copied';
+            setTimeout(() => { copyBtn.innerHTML = original; }, 1500);
+          } catch (e) {
+            // clipboard API unavailable (e.g. insecure context) — nothing to fall back to gracefully
+          }
+        });
+      }
+    })();
+
+    // Every plain code snippet on this page (install/run commands, YAML
+    // examples) gets its own Copy button — except the self-host builder's
+    // <pre> above, which already has one wired to its live-updating text.
+    (function () {
+      document.querySelectorAll(".guide-scroll pre").forEach((pre) => {
+        if (pre.closest(".file-block")) return;
+
+        const text = pre.textContent;
+        const wrapper = document.createElement("div");
+        wrapper.className = "guide-code-block";
+        pre.parentNode.insertBefore(wrapper, pre);
+        wrapper.appendChild(pre);
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn btn--ghost btn--sm guide-code-block__copy";
+        btn.innerHTML = '<i class="ti ti-copy" aria-hidden="true"></i> Copy';
+        btn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(text);
+            const original = btn.innerHTML;
+            btn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i> Copied';
+            setTimeout(() => { btn.innerHTML = original; }, 1500);
+          } catch (e) {
+            // clipboard API unavailable (e.g. insecure context) — nothing to fall back to gracefully
+          }
+        });
+        wrapper.appendChild(btn);
+      });
+    })();
+  </script>
 
 </body>
 </html>

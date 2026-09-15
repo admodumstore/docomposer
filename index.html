@@ -4,25 +4,31 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>DoComposer — Docker Compose Builder</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <script src="theme.js"></script>
+<script src="nav.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.46.0/tabler-icons.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <link rel="stylesheet" href="style.css" />
 </head>
-<body>
+<body data-page="index">
+
+  <nav class="app-tabs">
+    <div class="app-tabs__list">
+      <a href="index.html" class="app-tab is-active">Builder</a>
+      <a href="guide.html" class="app-tab">Guide</a>
+      <a href="dashboard.html" class="app-tab" id="dashboard-tab">Dashboard</a>
+    </div>
+    <button type="button" id="theme-toggle" class="theme-switch" aria-pressed="false" aria-label="Toggle dark mode">
+      <i class="ti ti-sun theme-switch__icon theme-switch__icon--sun" aria-hidden="true"></i>
+      <span class="theme-switch__track"><span class="theme-switch__knob"></span></span>
+      <i class="ti ti-moon theme-switch__icon theme-switch__icon--moon" aria-hidden="true"></i>
+    </button>
+  </nav>
 
   <header class="rack-label">
-    <div class="rack-label__topbar">
-      <button type="button" id="theme-toggle" class="text-link" aria-pressed="false">
-        <i class="ti ti-moon" aria-hidden="true"></i> Dark mode
-      </button>
-      <span aria-hidden="true">·</span>
-      <a class="text-link" href="guide.html">
-        <i class="ti ti-help-circle" aria-hidden="true"></i> New to Docker? Start here
-      </a>
-    </div>
     <div class="rack-label__main">
       <svg class="rack-label__logo" width="56" height="56" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DoComposer logo">
         <rect width="40" height="40" rx="10" fill="var(--accent)" />
@@ -38,7 +44,7 @@
           <code>docker-compose.yml</code> back, and skip the hour of copy-pasting and typo-hunting it usually takes
           to wire up more than one container by hand. Every port, volume and environment variable is editable
           before you download anything, and it warns you about port conflicts with containers already running
-          on this host. No sign-up, nothing stored.
+          on this host.
         </p>
       </div>
     </div>

@@ -23,6 +23,7 @@ const extraPorts = {}; // serviceKey -> [{ host, container }] user-added port ma
 const portOverrides = {}; // portKey -> user-edited host port for a built-in port, persists across re-renders
 let hostPortsInUse = []; // [{ host, protocol, container }] from live-ports.json, refreshed periodically
 const hostPortStatusEl = document.getElementById("host-port-status");
+let deployEnabled = false; // whether the optional "Deploy" button's backend is configured
 
 // ---- timezone list for the TZ dropdown --------------------------------
 
@@ -82,7 +83,7 @@ for (const key of alphabeticalServiceKeys()) {
   li.dataset.tags = (def.tags || []).join(",");
   li.innerHTML = `
     <input type="checkbox" id="svc-${key}" data-key="${key}" />
-    <img class="icon" src="${def.icon}" alt="" aria-hidden="true" />
+    <img class="icon" src="${def.icon}" alt="" aria-hidden="true"${def.iconBg ? ` style="background:${def.iconBg}; border-radius:6px; padding:4px; box-sizing:border-box;"` : ""} />
     <label class="service-item__body" for="svc-${key}">
       <span class="service-item__name">${def.name}</span>
       <span class="service-item__desc">${def.description}</span>
@@ -253,7 +254,90 @@ const ENV_KEY_HINTS = {
   PUID: "User ID the container runs as. Match it to a real user on your host (run `id -u`) so files it creates come out with the right owner.",
   PGID: "Group ID the container runs as. Match it to a real group on your host (run `id -g`) so files it creates come out with the right group.",
   TZ: "Timezone in IANA format (e.g. Etc/UTC, America/New_York) — used for logs and any scheduled tasks inside the container.",
+  HOMEPAGE_ALLOWED_HOSTS: "Auto-filled with how you're reaching this page — change it if you'll actually browse to Homepage from a different address, like a domain name instead of this IP.",
 };
+
+// ---- "Generate" button for changeme secrets ------------------------------
+
+function randomAlnum(length) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+}
+
+function randomHex(byteLength) {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function randomBase64(byteLength) {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  let binary = "";
+  bytes.forEach((b) => (binary += String.fromCharCode(b)));
+  return btoa(binary);
+}
+
+// Env vars whose "changeme..." placeholder has to come from somewhere
+// outside this tool — a VPN provider's dashboard, Tailscale's admin
+// console, your own reachable address — rather than a random string.
+// Generating one for these would look plausible but silently be wrong,
+// so they don't get a Generate button at all.
+const NO_GENERATE_KEYS = new Set([
+  "VPN_SERVICE_PROVIDER",
+  "WIREGUARD_PRIVATE_KEY",
+  "WIREGUARD_ADDRESSES",
+  "TS_AUTHKEY",
+  "HOMEPAGE_ALLOWED_HOSTS",
+]);
+
+// Figures out what a "Generate" click should produce for a changeme env
+// entry, from whatever format its own placeholder documents (services.js
+// already spells these out for a human — "openssl rand -hex 32" etc — so
+// this just parses that same text instead of a separate lookup table).
+// Returns null when nothing should be generated (see NO_GENERATE_KEYS).
+function generatorFor(entry) {
+  if (!entry.needsChange || entry.isTimezone || NO_GENERATE_KEYS.has(entry.key)) return null;
+  const hint = String(entry.defaultValue);
+
+  if (/laravel/i.test(hint)) return () => `base64:${randomBase64(32)}`;
+
+  let m = hint.match(/openssl-rand-hex-(\d+)/i);
+  if (m) return () => randomHex(Number(m[1]));
+
+  m = hint.match(/openssl-rand-base64-(\d+)/i);
+  if (m) return () => randomBase64(Number(m[1]));
+
+  m = hint.match(/at-least-(\d+)-chars/i);
+  if (m) return () => randomAlnum(Math.max(32, Number(m[1])));
+
+  // A plain "changeme" / "changeme-root" etc — a generic password or token.
+  return () => randomAlnum(24);
+}
+
+// Services whose env default should be auto-filled with how *this
+// browser* is reaching DoComposer plus the service's resolved port,
+// instead of a static "changeme" placeholder the user has to fill in
+// blind. Currently just Homepage's required Next.js host-header allowlist
+// — reusing our own address is a solid guess, since you'll typically
+// reach a newly deployed service the same way you reach this page.
+const AUTO_HOST_PORT_ENV = { homepage: "HOMEPAGE_ALLOWED_HOSTS" };
+
+function applyAutoHostPortDefaults(envEntries, portEntries) {
+  for (const [key, envKey] of Object.entries(AUTO_HOST_PORT_ENV)) {
+    const ownerName = SERVICES[key]?.name;
+    const entry = envEntries.find((e) => e.key === envKey && e.owner === ownerName);
+    if (!entry) continue;
+    // Once the user has typed their own value, leave it alone.
+    if (envOverrides[entry.varName] !== undefined) continue;
+    const port = portEntries.find((p) => p.key === key && !p.isExtra);
+    if (!port) continue;
+    entry.defaultValue = `${location.hostname}:${port.host}`;
+    entry.needsChange = false;
+  }
+}
 
 // PUID/PGID/TZ get one shared control across every selected Arr Stack
 // member instead of a separate row per service, since these apps usually
@@ -330,12 +414,18 @@ function settingsRowHTML(entry) {
        </select>`
     : `<input type="text" data-varname="${entry.varName}" data-needs-change="${entry.needsChange}" value="${current.replace(/"/g, "&quot;")}" />`;
 
+  const generateBtn = generatorFor(entry)
+    ? `<button type="button" class="btn btn--ghost btn--sm settings-row__generate" data-generate="${entry.varName}" title="Fill in a randomly generated value">
+         <i class="ti ti-dice-5" aria-hidden="true"></i> Generate
+       </button>`
+    : "";
+
   const hint = entry.needsChange ? changemeHint(current) : ENV_KEY_HINTS[entry.key];
 
   return `
     <div class="settings-row${stillNeedsChange ? " settings-row--warn" : ""}">
       <label for="field-${entry.varName}"${tooltipAttr(entry.varName, hint)}>${entry.key}</label>
-      ${field}
+      <div class="settings-row__field">${field}${generateBtn}</div>
     </div>
   `;
 }
@@ -724,6 +814,30 @@ settingsList.addEventListener("click", (e) => {
     const removePortIndex = Number(removePortBtn.dataset.removePortIndex);
     extraPorts[removePortKey]?.splice(removePortIndex, 1);
     rebuildAll();
+    return;
+  }
+
+  const generateBtn = e.target.closest("[data-generate]");
+  if (generateBtn) {
+    const varName = generateBtn.dataset.generate;
+    const entry = getAllEnvEntries().find((en) => en.varName === varName);
+    const generate = entry && generatorFor(entry);
+    if (!generate) return;
+
+    const value = generate();
+    envOverrides[varName] = value;
+
+    // Same DOM-only update the manual-edit "input" handler below does —
+    // keeps the settings panel in place instead of a full re-render.
+    const input = settingsList.querySelector(`[data-varname="${varName}"]`);
+    if (input) {
+      input.value = value;
+      input.closest(".settings-row")?.classList.remove("settings-row--warn");
+    }
+    tooltipContent.delete(varName);
+    hideTooltip();
+
+    renderOutputPanels(currentResult);
   }
 });
 
@@ -831,10 +945,22 @@ function fileBlockHTML(id, title, content) {
   `;
 }
 
+// "Speed Tracker" -> "speed-tracker" — used to default the Deploy
+// project-name prompt to something readable instead of a generic name.
+function slugify(name) {
+  return String(name)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 // Like fileBlockHTML, but for a compose file: the title becomes a
 // "docker-compose.yml" / "docker run" tab pair over the same <pre>.
-function composeBlockHTML(idBase, composeLabel, composeContent, runContent) {
-  fileBlockContents.set(idBase, { compose: composeContent, run: runContent });
+// `meta.defaultProjectName` seeds the Deploy prompt and `meta.portEntries`
+// is used afterward to link straight to whatever got deployed.
+function composeBlockHTML(idBase, composeLabel, composeContent, runContent, meta) {
+  fileBlockContents.set(idBase, { compose: composeContent, run: runContent, ...meta });
   return `
     <div class="file-block">
       <div class="file-block__head">
@@ -842,11 +968,19 @@ function composeBlockHTML(idBase, composeLabel, composeContent, runContent) {
           <button type="button" class="file-tab is-active" data-tab-target="${idBase}" data-tab="compose" role="tab" aria-selected="true">${composeLabel}</button>
           <button type="button" class="file-tab" data-tab-target="${idBase}" data-tab="run" role="tab" aria-selected="false">docker run</button>
         </div>
-        <button type="button" class="btn btn--ghost btn--sm" data-copy="${idBase}">
-          <i class="ti ti-copy" aria-hidden="true"></i> Copy
-        </button>
+        <div class="file-block__actions">
+          <button type="button" class="btn btn--ghost btn--sm" data-deploy="${idBase}" ${deployEnabled ? "" : "hidden"} title="Run this with docker compose up, right now, on this host">
+            <i class="ti ti-rocket" aria-hidden="true"></i> Deploy
+          </button>
+          <button type="button" class="btn btn--ghost btn--sm" data-copy="${idBase}">
+            <i class="ti ti-copy" aria-hidden="true"></i> Copy
+          </button>
+        </div>
       </div>
-      <pre id="${idBase}">${composeContent}</pre>
+      <div class="file-block__body">
+        <pre id="${idBase}">${composeContent}</pre>
+        <div class="deploy-overlay" id="${idBase}-deploy-overlay" hidden></div>
+      </div>
     </div>
   `;
 }
@@ -861,16 +995,23 @@ function renderOutputPanels(result) {
 
   if (result.type === "combined") {
     const envText = renderEnvFile(result.envEntries, envOverrides);
+    const selectedKeys = getSelectedKeys();
+    const defaultProjectName =
+      selectedKeys.length === 1 ? slugify(SERVICES[selectedKeys[0]].name) : "docomposer-stack";
     outputFiles.innerHTML =
-      composeBlockHTML("compose-output", "docker-compose.yml", escapeHtml(result.compose), escapeHtml(result.run)) +
-      fileBlockHTML("env-output", ".env", escapeHtml(envText));
+      composeBlockHTML("compose-output", "docker-compose.yml", escapeHtml(result.compose), escapeHtml(result.run), {
+        defaultProjectName,
+        portEntries: result.portEntries,
+      }) + fileBlockHTML("env-output", ".env", escapeHtml(envText));
   } else {
     outputFiles.innerHTML = result.files
       .map((f) => {
         const envText = renderEnvFile(f.envEntries, envOverrides);
         return (
-          composeBlockHTML(`compose-${f.key}`, f.filename, escapeHtml(f.compose), escapeHtml(f.run)) +
-          fileBlockHTML(`env-${f.key}`, `.env.${f.key}`, escapeHtml(envText))
+          composeBlockHTML(`compose-${f.key}`, f.filename, escapeHtml(f.compose), escapeHtml(f.run), {
+            defaultProjectName: slugify(f.name),
+            portEntries: f.portEntries,
+          }) + fileBlockHTML(`env-${f.key}`, `.env.${f.key}`, escapeHtml(envText))
         );
       })
       .join("");
@@ -878,6 +1019,7 @@ function renderOutputPanels(result) {
 
   attachCopyHandlers();
   attachTabHandlers();
+  attachDeployHandlers();
 }
 
 function attachCopyHandlers() {
@@ -946,6 +1088,7 @@ function computeOutputs(selectedKeys) {
       portOverrides,
       hostPortsInUse
     );
+    applyAutoHostPortDefaults(envEntries, portEntries);
     return { type: "combined", compose, run, envEntries, volumeEntries, portEntries, warnings, notes };
   }
   const { files, warnings } = generateSeparate(
@@ -956,6 +1099,7 @@ function computeOutputs(selectedKeys) {
     portOverrides,
     hostPortsInUse
   );
+  for (const f of files) applyAutoHostPortDefaults(f.envEntries, f.portEntries);
   const notes = files.flatMap((f) => f.notes);
   return { type: "separate", files, warnings, notes };
 }
@@ -1079,7 +1223,19 @@ async function refreshHostPortsInUse() {
         ? "Checking against 0 ports currently in use on this host."
         : `Checking against ${hostPortsInUse.length} port${hostPortsInUse.length === 1 ? "" : "s"} currently in use on this host.`;
 
-    if (changed && currentResult) rebuildAll();
+    // A full rebuild replaces #output-files wholesale — including any open
+    // deploy overlay, which would otherwise vanish out from under the user
+    // mid-deploy (or right after a successful one, since the newly
+    // deployed container's ports are exactly what just changed). Defer it
+    // until the overlay's been closed instead of skipping it outright, so
+    // conflict warnings still catch up once it's safe to redraw.
+    if (changed && currentResult) {
+      if (anyDeployOverlayOpen()) {
+        rebuildDeferredByDeploy = true;
+      } else {
+        rebuildAll();
+      }
+    }
   } catch (e) {
     hostPortsInUse = [];
     hostPortStatusEl.hidden = false;
@@ -1090,3 +1246,339 @@ async function refreshHostPortsInUse() {
 
 refreshHostPortsInUse();
 setInterval(refreshHostPortsInUse, 5000);
+
+// ---- deploy to this host (optional backend, see deploy-server.py) --------
+
+// Checked once — unlike host-port checking this doesn't change while the
+// container's running, so no need to poll it.
+async function refreshDeployAvailability() {
+  try {
+    const res = await fetch("api/status", { cache: "no-store" });
+    deployEnabled = res.ok && !!(await res.json()).deployEnabled;
+  } catch (e) {
+    deployEnabled = false;
+  }
+  outputFiles.querySelectorAll("[data-deploy]").forEach((btn) => {
+    btn.hidden = !deployEnabled;
+  });
+}
+refreshDeployAvailability();
+
+// Reverses escapeHtml() by letting the browser parse it back — the same
+// trick attachTabHandlers() relies on when swapping a <pre>'s innerHTML.
+function unescapeHtml(escaped) {
+  const el = document.createElement("div");
+  el.innerHTML = escaped;
+  return el.textContent;
+}
+
+function attachDeployHandlers() {
+  outputFiles.querySelectorAll("[data-deploy]").forEach((btn) => {
+    btn.onclick = () => startDeploy(btn.dataset.deploy);
+  });
+}
+
+// ---- deploy overlay: a layer over the compose <pre>, not a popup -------
+
+// Set by refreshHostPortsInUse() when it would normally rebuild the whole
+// output area but held off because a deploy overlay was open — see
+// hideDeployOverlay(), which runs the deferred rebuild once nothing's
+// showing anymore.
+let rebuildDeferredByDeploy = false;
+
+function anyDeployOverlayOpen() {
+  return !!outputFiles.querySelector(".deploy-overlay:not([hidden])");
+}
+
+function deployOverlayEl(idBase) {
+  return document.getElementById(`${idBase}-deploy-overlay`);
+}
+
+function setDeployButtonBusy(idBase, busy) {
+  const btn = outputFiles.querySelector(`[data-deploy="${idBase}"]`);
+  if (btn) btn.disabled = busy;
+}
+
+function showDeployOverlay(idBase, html) {
+  const el = deployOverlayEl(idBase);
+  if (!el) return;
+  el.innerHTML = html;
+  el.hidden = false;
+  el.querySelectorAll("[data-deploy-dismiss]").forEach((btn) => {
+    btn.onclick = () => hideDeployOverlay(idBase);
+  });
+}
+
+function hideDeployOverlay(idBase) {
+  const el = deployOverlayEl(idBase);
+  if (el) el.hidden = true;
+  setDeployButtonBusy(idBase, false);
+
+  if (rebuildDeferredByDeploy && !anyDeployOverlayOpen()) {
+    rebuildDeferredByDeploy = false;
+    if (currentResult) rebuildAll();
+  }
+}
+
+function renderDeployChecking(idBase) {
+  showDeployOverlay(
+    idBase,
+    `
+    <div class="deploy-overlay__box">
+      <p class="deploy-overlay__status"><i class="ti ti-loader-2" aria-hidden="true"></i> Checking…</p>
+    </div>
+  `
+  );
+}
+
+function renderDeployProjectForm(idBase, defaultProject) {
+  showDeployOverlay(
+    idBase,
+    `
+    <div class="deploy-overlay__box">
+      <h3><i class="ti ti-rocket" aria-hidden="true"></i> Deploy this stack</h3>
+      <label for="${idBase}-deploy-project">Project name <span class="compose-builder-widget__optional">(used as the folder name on the host)</span></label>
+      <form id="${idBase}-deploy-form">
+        <input type="text" id="${idBase}-deploy-project" value="${escapeHtml(defaultProject)}" autocomplete="off" />
+        <div class="deploy-overlay__actions">
+          <button type="button" class="btn btn--ghost btn--sm" data-deploy-dismiss>Cancel</button>
+          <button type="submit" class="btn btn--primary btn--sm">Deploy</button>
+        </div>
+      </form>
+    </div>
+  `
+  );
+  const input = document.getElementById(`${idBase}-deploy-project`);
+  input.focus();
+  input.select();
+  document.getElementById(`${idBase}-deploy-form`).onsubmit = (e) => {
+    e.preventDefault();
+    const project = input.value.trim();
+    if (project) checkAndDeploy(idBase, project);
+  };
+}
+
+// One row per already-running container: name (linked to the running app,
+// if it published a port this browser can reach) plus its state badge.
+function alreadyRunningListHTML(alreadyRunning) {
+  return alreadyRunning
+    .map((c) => {
+      const nameHTML = c.port
+        ? `<a href="http://${location.hostname}:${c.port}" target="_blank" rel="noopener">${escapeHtml(c.name)}</a>`
+        : escapeHtml(c.name);
+      return `
+        <li>
+          <span>${nameHTML}</span>
+          <span class="state-badge state-badge--${escapeHtml(c.state)}">${escapeHtml(c.state)}</span>
+        </li>`;
+    })
+    .join("");
+}
+
+function renderDeployAlreadyRunning(idBase, project, alreadyRunning) {
+  const running = alreadyRunning.filter((c) => c.state === "running").length;
+  showDeployOverlay(
+    idBase,
+    `
+    <div class="deploy-overlay__box">
+      <h3><i class="ti ti-alert-circle" aria-hidden="true"></i> Already running</h3>
+      <p>
+        This project is already running (${alreadyRunning.length} container${alreadyRunning.length === 1 ? "" : "s"},
+        ${running} of them up):
+      </p>
+      <ul class="deploy-overlay__container-list">${alreadyRunningListHTML(alreadyRunning)}</ul>
+      <p>Deploy anyway and update it in place?</p>
+      <div class="deploy-overlay__actions">
+        <button type="button" class="btn btn--ghost btn--sm" data-deploy-dismiss>Cancel</button>
+        <button type="button" class="btn btn--primary btn--sm" id="${idBase}-deploy-confirm">Deploy anyway</button>
+      </div>
+    </div>
+  `
+  );
+  document.getElementById(`${idBase}-deploy-confirm`).onclick = () => runDeploy(idBase, project);
+}
+
+function startDeploy(idBase) {
+  const stored = fileBlockContents.get(idBase);
+  if (!stored) return;
+  setDeployButtonBusy(idBase, true);
+  renderDeployProjectForm(idBase, stored.defaultProjectName || "docomposer-stack");
+}
+
+// Check *before* touching anything — if this exact service is already
+// running (under any project name), ask first instead of just quietly
+// updating it in place and explaining afterward.
+async function checkAndDeploy(idBase, project) {
+  const stored = fileBlockContents.get(idBase);
+  const compose = unescapeHtml(stored.compose);
+
+  renderDeployChecking(idBase);
+
+  try {
+    const checkRes = await fetch("api/deploy/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ compose }),
+    });
+    if (checkRes.ok) {
+      const checkData = await checkRes.json();
+      if (checkData.alreadyRunning && checkData.alreadyRunning.length) {
+        renderDeployAlreadyRunning(idBase, project, checkData.alreadyRunning);
+        return;
+      }
+    }
+  } catch (e) {
+    // If the check itself can't be reached, fall through to the real
+    // deploy attempt — it has its own error handling either way.
+  }
+
+  runDeploy(idBase, project);
+}
+
+// The backend writes docker compose's output to the response as it
+// happens (see deploy-server.py's stream_process), ending with one
+// RESULT_MARKER-prefixed JSON blob — everything before that marker is
+// shown live as the log, and the deploy stays "in progress" until the
+// marker (and the connection close after it) actually arrives.
+const DEPLOY_RESULT_MARKER = "\x00RESULT\x00";
+
+function renderDeployLogSkeleton(idBase) {
+  showDeployOverlay(
+    idBase,
+    `
+    <div class="deploy-overlay__box deploy-overlay__box--log">
+      <p class="deploy-overlay__status" id="${idBase}-deploy-status"><i class="ti ti-loader-2" aria-hidden="true"></i> Deploying…</p>
+      <pre class="deploy-overlay__log" id="${idBase}-deploy-log">Waiting for output…</pre>
+    </div>
+  `
+  );
+}
+
+function updateDeployLog(idBase, text) {
+  const pre = document.getElementById(`${idBase}-deploy-log`);
+  if (!pre) return;
+  pre.textContent = text || "Waiting for output…";
+  pre.scrollTop = pre.scrollHeight;
+}
+
+// Best-guess "open in browser" links for whatever just got deployed: each
+// port whose label reads like a web UI (not a DNS/sync/torrenting port,
+// say), using the same already-resolved host port the compose file itself
+// was built from.
+function openLinksFor(portEntries) {
+  const links = [];
+  const seen = new Set();
+  for (const entry of portEntries || []) {
+    if (entry.isExtra) continue; // no label to go on for a user-added port
+    const portDef = (SERVICES[entry.key]?.ports || []).find(
+      (p) => p.container === entry.container && (p.protocol || "tcp") === (entry.protocol || "tcp")
+    );
+    if (!portDef || !/web ui|dashboard|admin/i.test(portDef.label || "")) continue;
+    const dedupeKey = `${entry.key}:${entry.host}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    links.push({ name: entry.owner, port: entry.host });
+  }
+  return links;
+}
+
+function finishDeployLogView(idBase, logText, result) {
+  const ok = result.ok !== false && !result.error;
+  const already = alreadyRunningNote(result.alreadyRunning);
+  const message = ok
+    ? (already ? already + " " : "") +
+      `Deployed — containers are starting.${result.path ? ` Files written to: ${result.path}` : ""}`
+    : (already ? already + " " : "") + (result.error || "docker compose up failed — see the log above.");
+
+  const stored = fileBlockContents.get(idBase);
+  const links = ok ? openLinksFor(stored?.portEntries) : [];
+  const linksHTML = links.length
+    ? `<div class="deploy-overlay__links">
+        ${links
+          .map(
+            (l) =>
+              `<a class="btn btn--primary btn--sm" href="http://${location.hostname}:${l.port}" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> Open ${escapeHtml(l.name)}</a>`
+          )
+          .join("")}
+      </div>`
+    : "";
+
+  const icon = ok ? "ti-circle-check" : "ti-alert-circle";
+  const boxClass = ok ? "" : "deploy-overlay__box--error";
+
+  showDeployOverlay(
+    idBase,
+    `
+    <div class="deploy-overlay__box deploy-overlay__box--log ${boxClass}">
+      <p class="deploy-overlay__status"><i class="ti ${icon}" aria-hidden="true"></i> ${escapeHtml(message)}</p>
+      <pre class="deploy-overlay__log">${escapeHtml(logText) || "(no output)"}</pre>
+      ${linksHTML}
+      <div class="deploy-overlay__actions">
+        <button type="button" class="btn btn--ghost btn--sm" data-deploy-dismiss>Close</button>
+      </div>
+    </div>
+  `
+  );
+}
+
+async function runDeploy(idBase, project) {
+  const stored = fileBlockContents.get(idBase);
+  const envPre = document.getElementById(idBase.replace(/^compose-/, "env-"));
+  const compose = unescapeHtml(stored.compose);
+  const envText = envPre ? envPre.textContent : "";
+
+  renderDeployLogSkeleton(idBase);
+  let fullText = "";
+
+  try {
+    const res = await fetch("api/deploy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project, compose, env: envText }),
+    });
+
+    if (!res.ok || !res.body) {
+      // Validation/availability errors (400/503/…) still come back as one
+      // plain JSON body, not a stream — see deploy-server.py.
+      const data = await res.json().catch(() => ({}));
+      finishDeployLogView(idBase, "", { ok: false, error: data.error || `Deploy failed (HTTP ${res.status}).` });
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      fullText += decoder.decode(value, { stream: true });
+      const markerIdx = fullText.indexOf(DEPLOY_RESULT_MARKER);
+      updateDeployLog(idBase, markerIdx === -1 ? fullText : fullText.slice(0, markerIdx));
+    }
+
+    const markerIdx = fullText.indexOf(DEPLOY_RESULT_MARKER);
+    const logText = markerIdx === -1 ? fullText : fullText.slice(0, markerIdx);
+    let result;
+    if (markerIdx === -1) {
+      result = { ok: false, error: "Deploy stream ended unexpectedly." };
+    } else {
+      try {
+        result = JSON.parse(fullText.slice(markerIdx + DEPLOY_RESULT_MARKER.length));
+      } catch (e) {
+        result = { ok: false, error: "Deploy finished, but the result couldn't be read." };
+      }
+    }
+
+    finishDeployLogView(idBase, logText, result);
+  } catch (e) {
+    finishDeployLogView(idBase, fullText, {
+      ok: false,
+      error: "Couldn't reach the deploy backend. Is DEPLOY_BASE_DIR configured? See the guide.",
+    });
+  }
+}
+
+function alreadyRunningNote(alreadyRunning) {
+  if (!alreadyRunning || alreadyRunning.length === 0) return "";
+  const running = alreadyRunning.filter((c) => c.state === "running").length;
+  return `This project was already running (${alreadyRunning.length} container${alreadyRunning.length === 1 ? "" : "s"}, ${running} of them up) before this deploy — it's been updated in place, not created fresh.`;
+}

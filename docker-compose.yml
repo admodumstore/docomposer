@@ -5,12 +5,39 @@ services:
     restart: unless-stopped
     ports:
       - "8190:80"
+    # Optional "Deploy" button and container Dashboard — both off unless
+    # DEPLOY_BASE_DIR is set below (see README's "Deploying directly, and
+    # the Dashboard (optional)" section, or the snippet builder in the
+    # in-app guide):
+    #   DEPLOY_BASE_DIR: an absolute host path where deployed stacks get
+    #     written (e.g. /home/youruser/docker-stacks). Must also be added
+    #     to the volumes: list below at the *same* path on both sides, or
+    #     bind-mounted volumes in the generated compose files will end up
+    #     in the wrong place. There's no login gate on either feature — the
+    #     Docker socket below already gives this container full control
+    #     over every container on the host, so only set this on a
+    #     host/network you trust.
+    environment:
+      DEPLOY_BASE_DIR: "/home/youruser/docker-stacks"
     volumes:
       # Lets the port poller see currently-running containers' published
       # ports, so the builder can warn about conflicts with them too — not
-      # just conflicts among the services you're about to add. Note: a
-      # bind-mounted socket carries full Docker API access regardless of
-      # this mount having no :ro flag or not — filesystem read-only doesn't
-      # restrict which API calls go over the socket. Only run this on a
-      # trusted host, same caution as Portainer/Dockge/Portracker.
+      # just conflicts among the services you're about to add. Also used by
+      # the optional Deploy button to actually run `docker compose up`.
+      # Note: a bind-mounted socket carries full Docker API access
+      # regardless of this mount having no :ro flag or not — filesystem
+      # read-only doesn't restrict which API calls go over the socket.
+      # Only run this on a trusted host, same caution as
+      # Portainer/Dockge/Portracker.
       - /var/run/docker.sock:/var/run/docker.sock
+      # Required only for the Deploy button and Dashboard — same absolute
+      # path on both sides of the colon, matching DEPLOY_BASE_DIR above
+      # exactly:
+      - /home/youruser/docker-stacks:/home/youruser/docker-stacks
+      # Optional, and separate from the socket above: lets the port poller
+      # see ports bound by network_mode: host containers and non-Docker
+      # processes too, which the Docker API above genuinely cannot report
+      # (Docker doesn't track ports for host-networked containers at all).
+      # Read-only, and only ever read for port numbers — remove this line
+      # if you'd rather not grant it.
+      - /proc:/host/proc:ro

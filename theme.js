@@ -17,9 +17,8 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function render() {
-    btn.innerHTML = isDark()
-      ? '<i class="ti ti-sun" aria-hidden="true"></i> Light mode'
-      : '<i class="ti ti-moon" aria-hidden="true"></i> Dark mode';
+    // The switch's look (track/knob position, sun/moon emphasis) is pure
+    // CSS keyed off aria-pressed — nothing else to update here.
     btn.setAttribute("aria-pressed", String(isDark()));
   }
 
