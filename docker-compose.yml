@@ -1,6 +1,10 @@
 services:
   compose-builder:
-    build: .
+    image: ghcr.io/admodumstore/docomposer:latest
+    # Uncomment to build from this checkout instead of pulling the image
+    # above (e.g. if you're customizing services.js) — `docker compose up
+    # -d --build` then builds locally and tags it over the pulled image.
+    # build: .
     container_name: docomposer
     restart: unless-stopped
     ports:

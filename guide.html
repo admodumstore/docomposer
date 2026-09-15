@@ -267,7 +267,7 @@
       </p>
       <pre><code>services:
   compose-builder:
-    build: .
+    image: ghcr.io/admodumstore/docomposer:latest
     container_name: docomposer
     restart: unless-stopped
     ports:
@@ -288,7 +288,7 @@
       </p>
       <pre><code>services:
   compose-builder:
-    build: .
+    image: ghcr.io/admodumstore/docomposer:latest
     container_name: docomposer
     restart: unless-stopped
     ports:
@@ -476,7 +476,7 @@ docker compose up -d</code></pre>
         const lines = [];
         lines.push("services:");
         lines.push("  compose-builder:");
-        lines.push("    build: .");
+        lines.push("    image: ghcr.io/admodumstore/docomposer:latest");
         lines.push("    container_name: docomposer");
         lines.push("    restart: unless-stopped");
         lines.push("    ports:");

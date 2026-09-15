@@ -59,13 +59,30 @@ There's a bit of irony in running a docker-compose generator inside Docker,
 but it works fine:
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
+
+This pulls the prebuilt image from GitHub Container Registry
+(`ghcr.io/admodumstore/docomposer`, built for `amd64` and `arm64` by
+[the repo's own Actions workflow](.github/workflows/docker-publish.yml)) —
+no local build needed. If you're customizing `services.js` or anything
+else in this checkout, uncomment the `build: .` line in `docker-compose.yml`
+and run `docker compose up -d --build` instead to build from your own copy.
 
 Then visit `http://<your-server-ip>:8190`. To change the port, edit the
 left side of the `ports` mapping in `docker-compose.yml` (e.g. `"9000:80"`).
 
 If you'd rather use plain `docker run`:
+
+```bash
+docker run -d --name docomposer \
+  -p 8190:80 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --restart unless-stopped \
+  ghcr.io/admodumstore/docomposer:latest
+```
+
+Or building from source instead of pulling:
 
 ```bash
 docker build -t docomposer .
