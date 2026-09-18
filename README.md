@@ -194,6 +194,10 @@ controls every container the socket can see.
 - `.github/workflows/docker-publish.yml` — builds and publishes this
   image to GitHub Container Registry (`ghcr.io/admodumstore/docomposer`)
   on pushes to `main` and version tags, for `amd64` and `arm64`.
+- `scripts/catalog-refs.mjs` / `.github/workflows/catalog-drift.yml` — a
+  daily check for catalog entries that may have gone stale (an image
+  that no longer resolves, or an upstream source that changed) — see
+  "Keeping the catalog from going stale" below.
 
 ## Adding a new service
 
@@ -229,6 +233,33 @@ A few optional fields cover less common cases:
   project's own branding rather than guessing.
 - If there's no usable icon in the set at all, use `placeholderIcon("X")`
   (a plain initial) rather than borrowing an unrelated logo.
+- `sourceUrl` / `sourceHash` — the official docs/compose file this entry
+  was last verified against, and a sha256 of its content at the time. Both
+  optional, and independent of each other in practice: an entry with only
+  `image` set still gets checked for whether that image still resolves;
+  adding `sourceUrl` additionally lets the catalog-drift workflow (below)
+  notice when the upstream source itself changes. Pick a URL that's stable,
+  plain-text content — a raw `README.md`/`docker-compose.yml` on GitHub, not
+  a rendered GitHub or Docker Hub page, which embeds star/pull counts and
+  other content that changes on every check regardless of anything that
+  actually matters. Set `sourceHash` to that URL's content hashed the same
+  way the workflow does: `curl -fsSL <url> | sha256sum`.
+
+### Keeping the catalog from going stale
+
+`.github/workflows/catalog-drift.yml` runs daily (and on demand) and opens
+a GitHub issue, labeled `catalog-drift`, for any entry where either check
+fails — it never edits `services.js` itself. It caught a real one within
+days of being written: MinIO stopped publishing new images to Docker Hub
+in October 2025 and pulled most existing tags, which silently broke
+Milvus's `minio` dependency (fixed by switching to `quay.io/minio/minio`,
+MinIO's own remaining registry). When one of these issues fires: check
+whether the image genuinely moved/is gone (update `image`) or the source
+page changed in a way that matters (update the entry to match) — or, if
+the diff was just cosmetic, leave the entry alone and refresh `sourceHash`
+to the new content so it stops re-flagging. `scripts/catalog-refs.mjs` is
+what extracts `{key, image, sourceUrl, sourceHash}` for every entry (and
+`dependsOn` companion) for the workflow to check.
 
 ## Known limitations (good candidates for a v2)
 

@@ -1,0 +1,86 @@
+name: Catalog drift check
+
+# Doesn't fix anything by itself — it only flags catalog entries that might
+# need a human look, by opening a GitHub issue. See scripts/catalog-refs.mjs
+# and the "Adding a new service" section of the README for how sourceUrl/
+# sourceHash get set, and what to do when one of these issues fires.
+#
+# Two checks per entry:
+#   1. Image existence — does the image:tag still resolve on its registry?
+#      Catches an image being deleted or a typo'd tag. Does NOT catch a
+#      project quietly deprecating an old image in favor of a new one while
+#      leaving the old one live (the actual Stirling PDF case) — only #2
+#      below can catch that kind of change.
+#   2. Source drift (only for entries with sourceUrl set) — has the official
+#      docs/compose page this entry was last verified against changed since?
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract catalog image/source refs
+        run: node scripts/catalog-refs.mjs > /tmp/refs.jsonl
+
+      - name: Make sure the catalog-drift label exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh label create catalog-drift --repo "$REPO" --color FBCA04 \
+            --description "Opened by the catalog-drift workflow" 2>/dev/null || true
+
+      - name: Check each entry, open an issue for anything that's drifted
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -u
+          while IFS= read -r line; do
+            key=$(jq -r '.key' <<<"$line")
+            name=$(jq -r '.name' <<<"$line")
+            image=$(jq -r '.image' <<<"$line")
+            sourceUrl=$(jq -r '.sourceUrl' <<<"$line")
+            sourceHash=$(jq -r '.sourceHash' <<<"$line")
+
+            reason=""
+
+            if ! docker buildx imagetools inspect "$image" >/dev/null 2>/tmp/inspect-err; then
+              reason="**Image no longer resolves:** \`$image\`"$'\n\n'"$(tail -c 2000 /tmp/inspect-err)"
+            elif [ "$sourceUrl" != "null" ]; then
+              current_hash=$(curl -fsSL "$sourceUrl" 2>/dev/null | sha256sum | cut -d' ' -f1) || current_hash=""
+              if [ -n "$current_hash" ] && [ "$current_hash" != "$sourceHash" ]; then
+                reason="**Source changed:** [$sourceUrl]($sourceUrl)"$'\n\n'"Last verified hash: \`$sourceHash\`"$'\n'"Current hash: \`$current_hash\`"
+              fi
+            fi
+
+            if [ -z "$reason" ]; then
+              continue
+            fi
+
+            title="Catalog drift: $key"
+            already_open=$(gh issue list --repo "$REPO" --state open --label catalog-drift --json title \
+              | jq --arg t "$title" 'any(.[]; .title == $t)')
+            if [ "$already_open" = "true" ]; then
+              echo "Already flagged, leaving the open issue as-is: $key"
+              continue
+            fi
+
+            body="Automated catalog-drift check found a possible issue with **$name** (\`$key\`)."$'\n\n'"$reason"$'\n\n'"Review against the entry in \`services.js\` and either update it (and refresh \`sourceHash\` to match) or, if this was just a cosmetic change upstream, refresh \`sourceHash\` without changing the entry — then close this issue. See the README's \"Adding a new service\" section for the field reference."
+
+            gh issue create --repo "$REPO" --title "$title" --label catalog-drift --assignee admodumstore --body "$body"
+            echo "Opened an issue for $key"
+          done < /tmp/refs.jsonl
