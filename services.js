@@ -965,9 +965,9 @@ const SERVICES = {
     name: "Milvus",
     icon: placeholderIcon("M"),
     homepage: "https://milvus.io/",
-    image: "milvusdb/milvus:v3.0.1",
+    image: "milvusdb/milvus:v3.0.2",
     sourceUrl: "https://raw.githubusercontent.com/milvus-io/milvus/master/deployments/docker/standalone/docker-compose.yml",
-    sourceHash: "a1c9e72f430d79e571e28d9a104e3a4e0406842491adeb3dc927ebf3277f3479",
+    sourceHash: "d0cebb5be44fc78dacad780e059d2f56a894ad07e4cba44937b1b72236b3f39f",
     description: "Open-source vector database for storing and searching embeddings at scale — the storage layer behind semantic search and RAG.",
     tags: ["developer", "tools"],
     ports: [
@@ -976,6 +976,7 @@ const SERVICES = {
     ],
     volumes: ["./milvus/data:/var/lib/milvus"],
     environment: {
+      MINIO_REGION: "us-east-1",
       ETCD_ENDPOINTS: "milvus-etcd:2379",
       MINIO_ADDRESS: "milvus-minio:9000",
       MQ_TYPE: "woodpecker",
@@ -1011,7 +1012,7 @@ const SERVICES = {
         extraLines: [`command: minio server /minio_data --console-address ":9001"`],
       },
     ],
-    notes: "Standalone Milvus still needs etcd and MinIO as internal storage backends (bundled here as dependencies) — this is the official 3-container standalone layout, not the full distributed/clustered one. Slow to start; give it a minute after 'docker compose up' before the API or the Web UI (at :9091/webui/) responds.",
+    notes: "Standalone Milvus still needs etcd and MinIO as internal storage backends (bundled here as dependencies) — this is the official 3-container standalone layout, not the full distributed/clustered one. Slow to start; give it a minute after 'docker compose up' before the API or the Web UI (at :9091/webui/) responds. Upstream's own compose file now runs a one-shot container first to chown ./milvus/data to the image's internal 'milvus' user before starting — not replicated here (this project doesn't model one-shot init containers). If the milvus container fails to start on a fresh ./milvus/data folder with a permission error, that's why: stop the stack, run 'docker run --rm -v ./milvus/data:/var/lib/milvus milvusdb/milvus:v3.0.2 chown -R milvus:milvus /var/lib/milvus', then start it again.",
   },
 
   karakeep: {
