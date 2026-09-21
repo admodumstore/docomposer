@@ -1,6 +1,17 @@
 # DoComposer
 
-![DoComposer screenshot](DoComposer.png)
+<table>
+  <tr>
+    <td width="50%">
+      <img src="DoComposer.png" alt="DoComposer's Builder page: pick services from a checklist, edit settings, and get a docker-compose.yml back" />
+      <p align="center"><sub><strong>Builder</strong> — pick services, edit settings, get a compose file</sub></p>
+    </td>
+    <td width="50%">
+      <img src="dashboard-screenshot.png" alt="DoComposer's Dashboard page: every container on the host, with state, health, IP, ports, and start/stop/restart/remove/logs actions" />
+      <p align="center"><sub><strong>Dashboard</strong> — every container on the host, one click away</sub></p>
+    </td>
+  </tr>
+</table>
 
 **[Try it live](https://admodumstore.github.io/docomposer/)** — runs entirely
 in your browser, nothing to install just to take a look.
