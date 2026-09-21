@@ -19,9 +19,10 @@ let currentResult = null; // whatever computeOutputs() last returned
 const envOverrides = {}; // varName -> user-edited value, persists across re-renders
 const volumeOverrides = {}; // volKey -> user-edited host path, persists across re-renders
 const extraVolumes = {}; // serviceKey -> [{ host, container }] user-added mounts
-const extraPorts = {}; // serviceKey -> [{ host, container }] user-added port mappings
+const extraPorts = {}; // serviceKey -> [{ host, container, bindIp }] user-added port mappings
 const portOverrides = {}; // portKey -> user-edited host port for a built-in port, persists across re-renders
-let hostPortsInUse = []; // [{ host, protocol, container }] from live-ports.json, refreshed periodically
+const bindIpOverrides = {}; // portKey -> user-edited bind IP for a built-in port ("" = all interfaces)
+let hostPortsInUse = []; // [{ host, protocol, container, ip }] from live-ports.json, refreshed periodically
 const hostPortStatusEl = document.getElementById("host-port-status");
 let deployEnabled = false; // whether the optional "Deploy" button's backend is configured
 
@@ -566,16 +567,34 @@ function addVolumeButtonHTML(key) {
 // highlight, same as volumes; added ports lock their container side once
 // created, same add-then-lock-one-side pattern) ---------------------------
 
+// Shared bind-IP hint, used for both built-in and added ports. Actively
+// nudges toward setting one — leaving it blank is the more-exposed
+// default, not a neutral choice, and it's easy to not realize that.
+const BIND_IP_HINT =
+  "Worth setting deliberately: leaving this blank binds every network interface (0.0.0.0), which usually exposes the port more widely than you mean to. Set 127.0.0.1 to keep it reachable only from this host, or a specific LAN IP to limit which network can reach it.";
+
 function portRowHTML(entry) {
   if (entry.isExtra) {
     return `
       <div class="mount-table__row">
-        <input
-          type="text"
-          data-extra-port-key="${entry.key}"
-          data-extra-port-index="${entry.extraIndex}"
-          value="${String(entry.host).replace(/"/g, "&quot;")}"
-        />
+        <div class="port-bind-group">
+          <input
+            type="text"
+            class="port-bind-group__ip"
+            placeholder="0.0.0.0"
+            data-extra-bind-ip-key="${entry.key}"
+            data-extra-bind-ip-index="${entry.extraIndex}"
+            value="${String(entry.bindIp || "").replace(/"/g, "&quot;")}"
+            ${tooltipAttr(`extra-bind-${entry.key}-${entry.extraIndex}`, BIND_IP_HINT)}
+          />
+          <span class="port-bind-group__sep">:</span>
+          <input
+            type="text"
+            data-extra-port-key="${entry.key}"
+            data-extra-port-index="${entry.extraIndex}"
+            value="${String(entry.host).replace(/"/g, "&quot;")}"
+          />
+        </div>
         <span class="mount-table__value">${entry.container}</span>
         <button type="button" class="text-link mount-table__remove" data-remove-port="${entry.key}" data-remove-port-index="${entry.extraIndex}">Remove</button>
       </div>
@@ -588,14 +607,25 @@ function portRowHTML(entry) {
   const protoSuffix = entry.protocol ? ` (${entry.protocol})` : "";
   return `
     <div class="mount-table__row">
-      <input
-        type="text"
-        class="${isDefault ? "is-default" : ""}"
-        data-portkey="${entry.portKey}"
-        data-default-host="${entry.defaultHost}"
-        value="${String(current).replace(/"/g, "&quot;")}"
-        ${tooltipAttr(entry.portKey, hint)}
-      />
+      <div class="port-bind-group">
+        <input
+          type="text"
+          class="port-bind-group__ip${entry.bindIp ? "" : " is-default"}"
+          placeholder="0.0.0.0"
+          data-bind-ip-key="${entry.portKey}"
+          value="${String(entry.bindIp || "").replace(/"/g, "&quot;")}"
+          ${tooltipAttr(`bind-${entry.portKey}`, BIND_IP_HINT)}
+        />
+        <span class="port-bind-group__sep">:</span>
+        <input
+          type="text"
+          class="${isDefault ? "is-default" : ""}"
+          data-portkey="${entry.portKey}"
+          data-default-host="${entry.defaultHost}"
+          value="${String(current).replace(/"/g, "&quot;")}"
+          ${tooltipAttr(entry.portKey, hint)}
+        />
+      </div>
       <span class="mount-table__value">${entry.container}${protoSuffix}</span>
       <span></span>
     </div>
@@ -606,17 +636,30 @@ function portRowHTML(entry) {
 const openAddPortForms = new Set();
 
 // Every host port currently in play across selected services (built-in +
-// already-added), so the add-port form can refuse a duplicate outright
-// instead of silently remapping it like base-port conflicts do.
+// already-added), as host -> [bindIp, ...], so the add-port form can refuse
+// an actual conflict outright instead of silently remapping it like
+// base-port conflicts do — but still allow the same port number on a
+// different specific IP (see bindConflicts in services.js). Uses each
+// port's default/entered values, not live overrides — same scope this
+// check already had before bind IPs existed.
 function usedHostPorts() {
-  const ports = new Set();
+  const ports = new Map(); // host -> [bindIp, ...]
+  const add = (host, bindIp) => {
+    const mapKey = String(host);
+    if (!ports.has(mapKey)) ports.set(mapKey, []);
+    ports.get(mapKey).push(bindIp || "");
+  };
   for (const key of getSelectedKeys()) {
     const def = SERVICES[key];
-    for (const p of def.ports) ports.add(String(p.host));
+    const prefix = key.toUpperCase().replace(/-/g, "_");
+    def.ports.forEach((p, i) => {
+      const portKey = `${prefix}_PORT_${i}`;
+      add(portOverrides[portKey] ?? p.host, bindIpOverrides[portKey]);
+    });
     for (const dep of def.dependsOn || []) {
-      for (const p of dep.ports || []) ports.add(String(p.host));
+      for (const p of dep.ports || []) add(p.host, "");
     }
-    for (const extra of extraPorts[key] || []) ports.add(String(extra.host));
+    for (const extra of extraPorts[key] || []) add(extra.host, extra.bindIp);
   }
   return ports;
 }
@@ -629,6 +672,10 @@ function addPortFormHTML(key) {
   return `
     <div class="inline-add-form">
       <div class="inline-add-form__fields">
+        <div class="inline-add-form__field">
+          <label>Bind IP <span class="compose-builder-widget__optional">(optional)</span></label>
+          <input type="text" placeholder="0.0.0.0" data-new-port-bind-ip="${key}" />
+        </div>
         <div class="inline-add-form__field">
           <label>Host port</label>
           <input type="text" placeholder="8081" data-new-port-host="${key}" />
@@ -719,7 +766,7 @@ function renderSettingsPanel(allEnvEntries, allVolumeEntries, allPortEntries) {
       const addVolBtn = key ? addVolumeButtonHTML(key) : "";
 
       const portRows = (byOwnerPorts[owner] || []).map(portRowHTML).join("");
-      const portSection = mountTableHTML("Host port", "Container port", portRows);
+      const portSection = mountTableHTML("Host (IP:port)", "Container port", portRows);
       const addPortBtn = key ? addPortButtonHTML(key) : "";
 
       return `<div class="settings-group"><div class="settings-group__label">${owner}</div>${envRows}${volumeSection}${addVolBtn}${portSection}${addPortBtn}</div>`;
@@ -786,6 +833,7 @@ settingsList.addEventListener("click", (e) => {
   if (confirmPortBtn) {
     const confirmPortKey = confirmPortBtn.dataset.confirmAddPort;
     const form = confirmPortBtn.closest(".inline-add-form");
+    const bindIp = form.querySelector("[data-new-port-bind-ip]").value.trim();
     const host = form.querySelector("[data-new-port-host]").value.trim();
     const container = form.querySelector("[data-new-port-container]").value.trim();
 
@@ -795,14 +843,23 @@ settingsList.addEventListener("click", (e) => {
       return;
     }
 
-    if (usedHostPorts().has(host)) {
-      addPortErrors[confirmPortKey] = `Host port ${host} is already used by another selected service or port — choose a different one.`;
+    if (bindIp && !/^(\d{1,3}\.){3}\d{1,3}$/.test(bindIp)) {
+      addPortErrors[confirmPortKey] = "Bind IP must be a plain IPv4 address (e.g. 127.0.0.1), or left blank.";
+      rebuildAll();
+      return;
+    }
+
+    const existingIps = usedHostPorts().get(host) || [];
+    if (bindConflicts(existingIps, bindIp)) {
+      addPortErrors[confirmPortKey] = bindIp
+        ? `Host port ${host} on ${bindIp} is already used by another selected service or port — choose a different port or IP.`
+        : `Host port ${host} is already used by another selected service or port — choose a different one.`;
       rebuildAll();
       return;
     }
 
     delete addPortErrors[confirmPortKey];
-    (extraPorts[confirmPortKey] ||= []).push({ host, container });
+    (extraPorts[confirmPortKey] ||= []).push({ host, container, bindIp });
     openAddPortForms.delete(confirmPortKey);
     rebuildAll();
     return;
@@ -858,7 +915,17 @@ settingsList.addEventListener("input", (e) => {
   if (extraPortKey) {
     const idx = Number(e.target.dataset.extraPortIndex);
     const list = (extraPorts[extraPortKey] ||= []);
-    (list[idx] ||= { host: "", container: "" }).host = e.target.value;
+    (list[idx] ||= { host: "", container: "", bindIp: "" }).host = e.target.value;
+    currentResult = computeOutputs(getSelectedKeys());
+    renderOutputPanels(currentResult);
+    return;
+  }
+
+  const extraBindIpKey = e.target.dataset.extraBindIpKey;
+  if (extraBindIpKey) {
+    const idx = Number(e.target.dataset.extraBindIpIndex);
+    const list = (extraPorts[extraBindIpKey] ||= []);
+    (list[idx] ||= { host: "", container: "", bindIp: "" }).bindIp = e.target.value.trim();
     currentResult = computeOutputs(getSelectedKeys());
     renderOutputPanels(currentResult);
     return;
@@ -885,6 +952,20 @@ settingsList.addEventListener("input", (e) => {
     // Same reasoning as volume paths — the port is baked directly into the
     // compose/run output (and feeds conflict detection), so it needs a
     // full regenerate, but the settings DOM itself stays untouched.
+    currentResult = computeOutputs(getSelectedKeys());
+    renderOutputPanels(currentResult);
+    renderWarnings(currentResult.warnings);
+    return;
+  }
+
+  const bindIpKey = e.target.dataset.bindIpKey;
+  if (bindIpKey) {
+    bindIpOverrides[bindIpKey] = e.target.value.trim();
+    // Same "is-default" treatment as the host-port field next to it, so
+    // the pair reads as one visually consistent control — highlighted
+    // while blank (still the more-exposed "all interfaces" default),
+    // plain once a specific IP narrows it down.
+    e.target.classList.toggle("is-default", e.target.value.trim() === "");
     currentResult = computeOutputs(getSelectedKeys());
     renderOutputPanels(currentResult);
     renderWarnings(currentResult.warnings);
@@ -1086,6 +1167,7 @@ function computeOutputs(selectedKeys) {
       extraVolumes,
       extraPorts,
       portOverrides,
+      bindIpOverrides,
       hostPortsInUse
     );
     applyAutoHostPortDefaults(envEntries, portEntries);
@@ -1097,6 +1179,7 @@ function computeOutputs(selectedKeys) {
     extraVolumes,
     extraPorts,
     portOverrides,
+    bindIpOverrides,
     hostPortsInUse
   );
   for (const f of files) applyAutoHostPortDefaults(f.envEntries, f.portEntries);
@@ -1304,6 +1387,12 @@ function showDeployOverlay(idBase, html) {
   if (!el) return;
   el.innerHTML = html;
   el.hidden = false;
+  // The overlay is a normal in-flow block now (see .deploy-overlay in
+  // style.css), not an absolutely-positioned one covering the code
+  // preview beside it — so that <pre> needs hiding explicitly, or the
+  // two would just stack on top of each other in the page's flow.
+  const codePre = document.getElementById(idBase);
+  if (codePre) codePre.hidden = true;
   el.querySelectorAll("[data-deploy-dismiss]").forEach((btn) => {
     btn.onclick = () => hideDeployOverlay(idBase);
   });
@@ -1312,6 +1401,8 @@ function showDeployOverlay(idBase, html) {
 function hideDeployOverlay(idBase) {
   const el = deployOverlayEl(idBase);
   if (el) el.hidden = true;
+  const codePre = document.getElementById(idBase);
+  if (codePre) codePre.hidden = false;
   setDeployButtonBusy(idBase, false);
 
   if (rebuildDeferredByDeploy && !anyDeployOverlayOpen()) {
@@ -1364,7 +1455,7 @@ function alreadyRunningListHTML(alreadyRunning) {
   return alreadyRunning
     .map((c) => {
       const nameHTML = c.port
-        ? `<a href="http://${location.hostname}:${c.port}" target="_blank" rel="noopener">${escapeHtml(c.name)}</a>`
+        ? `<a href="http://${location.hostname}:${c.port}" target="_blank" rel="noopener noreferrer">${escapeHtml(c.name)}</a>`
         : escapeHtml(c.name);
       return `
         <li>
@@ -1458,7 +1549,6 @@ function updateDeployLog(idBase, text) {
   const pre = document.getElementById(`${idBase}-deploy-log`);
   if (!pre) return;
   pre.textContent = text || "Waiting for output…";
-  pre.scrollTop = pre.scrollHeight;
 }
 
 // Best-guess "open in browser" links for whatever just got deployed: each
@@ -1497,7 +1587,7 @@ function finishDeployLogView(idBase, logText, result) {
         ${links
           .map(
             (l) =>
-              `<a class="btn btn--primary btn--sm" href="http://${location.hostname}:${l.port}" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i> Open ${escapeHtml(l.name)}</a>`
+              `<a class="btn btn--primary btn--sm" href="http://${location.hostname}:${l.port}" target="_blank" rel="noopener noreferrer"><i class="ti ti-external-link" aria-hidden="true"></i> Open ${escapeHtml(l.name)}</a>`
           )
           .join("")}
       </div>`

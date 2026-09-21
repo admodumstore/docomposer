@@ -28,8 +28,12 @@ HOST_NET=/host/proc/1/net
 
 # `unique` collapses the duplicate entries Docker returns when a port is
 # published on both an IPv4 and IPv6 host address — same port, same
-# container, we only care once.
-JQ_FILTER='[.[] as $c | ($c.Names[0] // "unknown" | ltrimstr("/")) as $name | ($c.Ports // [])[] | select(.PublicPort != null) | {host: .PublicPort, protocol: (.Type // "tcp"), container: $name}] | unique'
+# container, we only care once. `ip` is Docker's own bind address for that
+# publish, normalized so "0.0.0.0"/"::"/unset (all mean "every interface")
+# all become "" — the one sentinel the frontend's conflict logic checks for,
+# so a port bound to a specific IP is only ever flagged as a real conflict
+# against that same IP or against something bound to every interface.
+JQ_FILTER='[.[] as $c | ($c.Names[0] // "unknown" | ltrimstr("/")) as $name | ($c.Ports // [])[] | select(.PublicPort != null) | {host: .PublicPort, protocol: (.Type // "tcp"), container: $name, ip: (.IP as $ip | if ($ip == "0.0.0.0" or $ip == "::" or $ip == null or $ip == "") then "" else $ip end)}] | unique'
 
 # Reads one /proc/net/{tcp,udp}[6] file and prints one JSON object per
 # bound port (no container name — the caller only keeps the ones the
@@ -56,7 +60,13 @@ read_raw_ports() {
       ""|*[!0-9A-Fa-f]*) continue ;;
     esac
     port_dec=$((16#$port_hex))
-    printf '{"host":%d,"protocol":"%s"}\n' "$port_dec" "$proto"
+    # ip is deliberately always "" (all interfaces) here rather than the
+    # real bound address — un-reversing /proc's little-endian hex IPv4
+    # isn't worth the shell complexity for this already-best-effort
+    # fallback, and treating it as "every interface" is the safe direction
+    # to be wrong in: it can only cause an extra conflict warning, never
+    # miss a real one.
+    printf '{"host":%d,"protocol":"%s","ip":""}\n' "$port_dec" "$proto"
   done
 }
 

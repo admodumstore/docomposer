@@ -522,31 +522,33 @@ body {
 
 .file-block__body { position: relative; }
 
-/* ---- deploy overlay: layers over a compose <pre>, replacing prompt()/confirm() popups ---- */
+/* ---- deploy overlay: replaces the compose <pre> in place, and prompt()/confirm() popups ---- */
 
+/* Was `position: absolute; inset: 0` — but its positioned ancestor is
+   .file-block__body, the small code-preview box, not the page, so as a
+   modal it was ever only as tall as that little box: a long deploy log
+   had nowhere real to grow into and ended up squeezed and unreachable
+   (see the "stuck in the middle of the window, can't scroll" report).
+   Now a normal in-flow block: it takes whatever height its content
+   needs, the page grows to fit it, and the ordinary page scrollbar —
+   which is discoverable, unlike a hidden internal one — reaches all of
+   it. showDeployOverlay/hideDeployOverlay hide the code <pre> beside it
+   while this is showing, so the two don't stack. */
 .deploy-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: rgba(0, 0, 0, 0.55);
+  padding: 16px 0;
 }
 
 .deploy-overlay[hidden] { display: none; }
 
 .deploy-overlay__box {
   width: 100%;
-  max-width: 420px;
-  max-height: 100%;
-  overflow-y: auto;
+  max-width: 560px;
+  margin: 0 auto;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 20px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
   font-family: "IBM Plex Sans", sans-serif;
 }
 
@@ -641,6 +643,11 @@ body {
   width: 100%;
 }
 
+/* No max-height/overflow here on purpose — grows to fit the whole log, no
+   matter how long, rather than capping it behind an internal scrollbar.
+   The page itself gets taller and its own (ordinary, visible) scrollbar
+   reaches every line, plus whatever's below it — that's the explicit
+   trade-off asked for over a bounded, internally-scrolling pane. */
 .deploy-overlay__log {
   margin: 10px 0 0;
   padding: 10px;
@@ -650,8 +657,6 @@ body {
   font-family: "IBM Plex Mono", monospace;
   font-size: 12px;
   line-height: 1.5;
-  max-height: 320px;
-  overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -817,6 +822,36 @@ body {
   font-size: 12.5px;
   color: var(--muted);
   word-break: break-word;
+}
+
+/* Host-port cell for ports: an optional bind-IP input plus the port
+   itself, shown like the actual "ip:port" syntax it produces. Both
+   inputs still match .mount-table input's base look; only their widths
+   need overriding so the IP field stays narrow and the port field takes
+   the rest of the cell. */
+.port-bind-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mount-table .port-bind-group__ip {
+  width: 92px;
+  flex: 0 0 auto;
+}
+
+.mount-table .port-bind-group input:not(.port-bind-group__ip) {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.port-bind-group__sep {
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .mount-table__remove {
@@ -1317,7 +1352,11 @@ body.guide-page .guide-scroll {
 /* ---- dashboard page ---------------------------------------------------- */
 
 .dashboard {
-  max-width: 1200px;
+  /* Matches .layout's 1800px (the Builder page) rather than a
+     reading-width 1200px — this page is a wide data table, not prose, and
+     1200px was leaving no room for the Actions column on ordinary desktop
+     viewports once every other column had its natural width. */
+  max-width: 1800px;
   margin: 0;
   padding: 24px 32px 48px;
 }
@@ -1369,7 +1408,16 @@ body.guide-page .guide-scroll {
 }
 
 .dashboard-table {
-  width: 100%;
+  /* max-content (floored at min-width:100%) instead of a flat 100%: with
+     a sticky right-hand Actions column, forcing the table into exactly
+     the wrapper's width leaves no room to lay out every column at its
+     natural size, so State/Project end up rendered underneath Actions'
+     sticky box instead of to its left. Letting the table grow to fit its
+     actual content — and leaving the wrapper's own overflow:auto to add
+     a horizontal scrollbar when that's wider than the viewport — keeps
+     every column in its own space with nothing sticky able to overlap it. */
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -1432,6 +1480,17 @@ body.guide-page .guide-scroll {
   border-bottom-color: var(--accent-ink);
 }
 
+.dashboard-table__port-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dashed var(--muted);
+}
+
+.dashboard-table__port-link:hover {
+  color: var(--accent-ink);
+  border-bottom-color: var(--accent-ink);
+}
+
 .dashboard-table__icon {
   width: 18px;
   height: 18px;
@@ -1462,6 +1521,7 @@ body.guide-page .guide-scroll {
   white-space: nowrap;
 }
 
+.dashboard-table__ip,
 .dashboard-table__ports,
 .dashboard-table__project {
   font-family: "IBM Plex Mono", monospace;
@@ -1470,31 +1530,41 @@ body.guide-page .guide-scroll {
   white-space: nowrap;
 }
 
+/* Some containers (Traccar alone publishes 100+ ports) render a single
+   very long nowrap line here — in Gecko (Firefox/Zen) that can overflow
+   the cell's own box and paint over the columns to its right instead of
+   properly growing the column, the same underlying sticky-table/auto-
+   layout mismatch as the Actions column fix above. Capping the width and
+   truncating (full list still available via the title attribute) keeps
+   the cell's rendered box honest in every browser. */
+.dashboard-table__ports {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .dashboard-table__actions-head {
-  position: sticky;
-  right: 0;
-  z-index: 4;
   background: var(--panel);
 }
 
+/* Actions used to be `position: sticky; right: 0` so it stayed visible
+   while scrolling horizontally, but that's the second unrelated layout
+   bug this table has hit from the combination of a sticky column with
+   automatic table sizing (Gecko in particular): first the actions cell
+   collapsing to zero width with the previous column's content painted
+   over it, now State/Project rendering underneath it entirely. Rather
+   than keep chasing edge cases in that interaction, Actions is a plain
+   column now — it scrolls out of view with everything else on very
+   narrow viewports, but every column lays out and paints predictably in
+   every browser, which matters more here. */
 .dashboard-table__actions {
-  position: sticky;
-  right: 0;
-  z-index: 2;
-  background: inherit;
   white-space: nowrap;
 }
 
-/* The flex layout lives on this inner wrapper, not the sticky <td> itself
-   — a table cell whose own display is overridden to flex is a spot where
-   Gecko (Firefox/Zen) and Chromium disagree on how position: sticky and
-   table layout interact, and the cell can end up collapsed to zero width
-   with the previous column's content overlapping it. */
 .dashboard-table__actions-inner {
   display: flex;
   align-items: center;
   gap: 4px;
-  box-shadow: -6px 0 6px -6px rgba(0, 0, 0, 0.2);
 }
 
 .dashboard-action-btn {
@@ -1520,24 +1590,72 @@ body.guide-page .guide-scroll {
   cursor: not-allowed;
 }
 
-.dashboard-action-btn--start:hover:not(:disabled) {
+/* is-loading overrides the plain disabled fade above: it's still
+   `disabled` (to block double-clicks) but means "working on it", not
+   "not applicable right now", so it keeps the same per-action color a
+   hover or click gives it instead of fading to gray. */
+.dashboard-action-btn.is-loading:disabled {
+  opacity: 1;
+  cursor: wait;
+}
+
+/* A disabled Start on a running container, or a disabled Stop on a
+   stopped one, isn't just "unavailable" — it IS the container's current
+   state, so it gets the same colors as that state's badge in the Status
+   column instead of fading to gray like a truly inapplicable action. */
+.dashboard-action-btn--start[data-state="running"]:disabled {
+  opacity: 1;
+  cursor: default;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #FFFFFF;
+}
+
+.dashboard-action-btn--stop[data-state="exited"]:disabled,
+.dashboard-action-btn--stop[data-state="dead"]:disabled {
+  opacity: 1;
+  cursor: default;
+  background: var(--warn-bg);
+  border-color: var(--warn-ink);
+  color: var(--warn-ink);
+}
+
+.dashboard-action-btn--start:hover:not(:disabled),
+.dashboard-action-btn--start.is-firing,
+.dashboard-action-btn--start.is-loading {
   background: var(--accent);
   border-color: var(--accent);
   color: #FFFFFF;
 }
 
 .dashboard-action-btn--stop:hover:not(:disabled),
-.dashboard-action-btn--remove:hover:not(:disabled) {
+.dashboard-action-btn--remove:hover:not(:disabled),
+.dashboard-action-btn--stop.is-firing,
+.dashboard-action-btn--remove.is-firing,
+.dashboard-action-btn--stop.is-loading,
+.dashboard-action-btn--remove.is-loading {
   background: var(--warn-ink);
   border-color: var(--warn-ink);
   color: #FFFFFF;
 }
 
 .dashboard-action-btn--restart:hover:not(:disabled),
-.dashboard-action-btn--logs:hover:not(:disabled) {
+.dashboard-action-btn--logs:hover:not(:disabled),
+.dashboard-action-btn--link:hover:not(:disabled),
+.dashboard-action-btn--restart.is-firing,
+.dashboard-action-btn--logs.is-firing,
+.dashboard-action-btn--link.is-firing,
+.dashboard-action-btn--restart.is-loading,
+.dashboard-action-btn--logs.is-loading {
   background: var(--ink);
   border-color: var(--ink);
   color: var(--panel);
+}
+
+/* A manual link override is currently set for this container. */
+.dashboard-action-btn--link.is-set {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 @keyframes action-pulse {
@@ -1577,6 +1695,38 @@ body.guide-page .guide-scroll {
   background: var(--warn-bg);
   border-color: var(--warn-ink);
   color: var(--warn-ink);
+}
+
+/* Docker's own healthcheck result, shown alongside the State badge rather
+   than a separate column — only meaningful while running (see rowHTML).
+   Outlined instead of solid-filled like State's own badge, so two
+   same-color pills sitting next to each other (e.g. both green for
+   running + healthy) don't read as one redundant blob. */
+.health-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+.health-badge--healthy {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.health-badge--unhealthy {
+  border-color: var(--warn-ink);
+  color: var(--warn-ink);
+}
+
+.health-badge--starting {
+  border-color: var(--info-ink);
+  color: var(--info-ink);
 }
 
 .logs-modal__box {
@@ -1625,6 +1775,53 @@ body.guide-page .guide-scroll {
   word-break: break-word;
   flex: 1;
   min-height: 200px;
+}
+
+.link-override-modal__box { max-width: 360px; }
+
+.link-override-modal__hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+
+.link-override-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.link-override-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.link-override-form__field:last-child { flex: 1; }
+
+.link-override-form__field select,
+.link-override-form__field input {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.link-override-modal__error {
+  font-size: 12px;
+  color: var(--warn-ink);
+  margin: 0 0 12px;
+}
+
+.link-override-modal__actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 @media (max-width: 700px) {
@@ -1695,7 +1892,10 @@ body.guide-page .guide-scroll {
 
 .compose-builder-widget__fields {
   display: grid;
-  grid-template-columns: 140px 1fr;
+  /* Was 140px, sized for a bare port input — the Host column now holds
+     [92px IP box] + separator + port box, which doesn't fit in that
+     width; the port box was rendering, just squeezed down to a sliver. */
+  grid-template-columns: 220px 1fr;
   gap: 12px 16px;
   margin-bottom: 16px;
 }
@@ -1730,6 +1930,57 @@ body.guide-page .guide-scroll {
 .compose-builder-widget__fields input:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+/* Same bind-IP:port pattern as the Builder page's .mount-table (those
+   rules are scoped to .mount-table specifically, so this widget needs its
+   own copy rather than sharing them directly) — each side has its own
+   "IP"/"Port" label above it, so align the row to the *inputs*
+   (flex-end), not the label text, or the separator ends up floating
+   oddly between the two label rows. */
+.compose-builder-widget .port-bind-group {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.compose-builder-widget .port-bind-group__field {
+  display: flex;
+  flex-direction: column;
+}
+
+.compose-builder-widget .port-bind-group__field--ip { flex: 0 0 auto; }
+
+.compose-builder-widget .port-bind-group__field--port {
+  flex: 1;
+  min-width: 0;
+}
+
+/* [type="text"] here isn't decorative — .compose-builder-widget__fields
+   input[type="text"] above sets width:100% with equal-or-higher
+   specificity otherwise, which silently wins back over this 92px and
+   stretches the IP field across the whole row (exactly what happened:
+   the port field wasn't missing, it was squeezed to ~0 width behind it). */
+.compose-builder-widget .port-bind-group__ip[type="text"] {
+  width: 92px;
+}
+
+.compose-builder-widget .port-bind-group__sep {
+  padding-bottom: 9px;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* Highlighted while at its starting/least-exposed value — blank for the
+   IP field, the prefilled 8190 for Port, blank (deploy off) for the
+   folder path — plain once actually changed, same "you're looking at a
+   default, not something you set" signal as the Builder page's fields. */
+.compose-builder-widget input.is-default {
+  background: var(--info-bg);
+  border-color: var(--info-ink);
+  color: var(--info-ink);
 }
 
 .compose-builder-widget__checkbox {

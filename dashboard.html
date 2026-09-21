@@ -71,9 +71,10 @@
           <thead>
             <tr>
               <th data-sort="name">Name <span class="sort-arrow"></span></th>
-              <th data-sort="state">State <span class="sort-arrow"></span></th>
-              <th data-sort="image">Image <span class="sort-arrow"></span></th>
+              <th data-sort="ip">IP Address <span class="sort-arrow"></span></th>
               <th data-sort="ports">Ports <span class="sort-arrow"></span></th>
+              <th data-sort="image">Image <span class="sort-arrow"></span></th>
+              <th data-sort="state">State <span class="sort-arrow"></span></th>
               <th data-sort="project">Project <span class="sort-arrow"></span></th>
               <th class="dashboard-table__actions-head">Actions</th>
             </tr>
@@ -105,6 +106,39 @@
         </button>
       </div>
       <pre id="logs-modal-content" class="logs-modal__content"></pre>
+    </div>
+  </div>
+
+  <div id="link-override-modal" class="modal" hidden>
+    <div class="modal__box link-override-modal__box">
+      <div class="logs-modal__head">
+        <h2 id="link-override-modal-title">Link</h2>
+        <button type="button" class="btn btn--ghost btn--sm" id="link-override-modal-close" aria-label="Close">
+          <i class="ti ti-x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <p class="link-override-modal__hint">
+        DoComposer couldn't automatically work out which port this container's web UI is on. Set it manually —
+        this is remembered for every device that opens this dashboard, not just this browser.
+      </p>
+      <form id="link-override-form" class="link-override-form">
+        <label class="link-override-form__field">
+          <span>Scheme</span>
+          <select id="link-override-scheme">
+            <option value="http">http</option>
+            <option value="https">https</option>
+          </select>
+        </label>
+        <label class="link-override-form__field">
+          <span>Port</span>
+          <input type="number" id="link-override-port" min="1" max="65535" placeholder="8080" required />
+        </label>
+      </form>
+      <p id="link-override-error" class="link-override-modal__error" hidden></p>
+      <div class="link-override-modal__actions">
+        <button type="button" class="btn btn--ghost btn--sm" id="link-override-clear">Clear override</button>
+        <button type="button" class="btn btn--primary btn--sm" id="link-override-save">Save</button>
+      </div>
     </div>
   </div>
 

@@ -26,6 +26,11 @@ const SERVICES = {
     icon: `${ICON_BASE}/plex.svg`,
     homepage: "https://www.plex.tv/",
     image: "plexinc/pms-docker:latest",
+    // linuxserver/plex is a very commonly-run alternative to the vendor
+    // image above — same ports, so the Dashboard's icon and "open in
+    // browser" link (which needs to tell Web UI 32400 apart from Plex's
+    // several other published discovery ports) still work for it.
+    imageAliases: ["linuxserver/plex"],
     description: "Media server for movies, TV and music.",
     tags: ["media", "movies", "tv", "music"],
     ports: [{ container: 32400, host: 32400, label: "Web UI" }],
@@ -78,6 +83,16 @@ const SERVICES = {
           MYSQL_USER: "nextcloud",
           MYSQL_PASSWORD: "changeme",
         },
+        // healthcheck.sh ships in the official mariadb image specifically
+        // for this — it reads the same MYSQL_* env vars the entrypoint
+        // used, so it doesn't need separate credentials passed in here.
+        healthcheck: {
+          test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"],
+          interval: "10s",
+          timeout: "5s",
+          retries: 5,
+          startPeriod: "10s",
+        },
       },
     ],
     notes: "Change every 'changeme' password before running docker compose up.",
@@ -88,6 +103,7 @@ const SERVICES = {
     icon: `${ICON_BASE}/home-assistant.svg`,
     homepage: "https://www.home-assistant.io/",
     image: "ghcr.io/home-assistant/home-assistant:stable",
+    imageAliases: ["homeassistant/home-assistant"], // Home Assistant's own Docker Hub mirror of the same image
     description: "Smart home automation hub.",
     tags: ["smart-home", "automation"],
     ports: [{ container: 8123, host: 8123, label: "Web UI" }],
@@ -140,6 +156,7 @@ const SERVICES = {
     icon: `${ICON_BASE}/jellyfin.svg`,
     homepage: "https://jellyfin.org/",
     image: "jellyfin/jellyfin:latest",
+    imageAliases: ["linuxserver/jellyfin"], // see the same note on Plex, above
     description: "Free, open-source media server for movies, TV and music.",
     tags: ["media", "movies", "tv", "music"],
     ports: [{ container: 8096, host: 8096, label: "Web UI" }],
@@ -280,6 +297,12 @@ const SERVICES = {
         image: "valkey/valkey:9",
         volumes: [],
         environment: {},
+        healthcheck: {
+          test: ["CMD", "valkey-cli", "ping"],
+          interval: "10s",
+          timeout: "5s",
+          retries: 5,
+        },
       },
       {
         key: "immich-postgres",
@@ -290,6 +313,18 @@ const SERVICES = {
           DB_USERNAME: "postgres",
           DB_PASSWORD: "changeme",
           DB_DATABASE_NAME: "immich",
+        },
+        // No -U/-d: pg_isready's basic "is the server accepting
+        // connections yet" check doesn't require valid credentials to
+        // succeed, which sidesteps this image's non-standard DB_* env var
+        // names (a postgres image normally expects POSTGRES_USER/
+        // POSTGRES_DB) rather than depending on them matching.
+        healthcheck: {
+          test: ["CMD-SHELL", "pg_isready"],
+          interval: "10s",
+          timeout: "5s",
+          retries: 5,
+          startPeriod: "10s",
         },
       },
     ],
@@ -492,6 +527,7 @@ const SERVICES = {
     icon: `${ICON_BASE}/n8n.svg`,
     homepage: "https://n8n.io/",
     image: "n8nio/n8n:latest",
+    imageAliases: ["docker.n8n.io/n8nio/n8n"], // n8n's own registry mirror of the same image
     description: "Workflow automation tool for connecting APIs and services without code.",
     tags: ["automation", "workflow"],
     ports: [{ container: 5678, host: 5678, label: "Web UI" }],
@@ -547,6 +583,12 @@ const SERVICES = {
         image: "redis:7-alpine",
         volumes: ["./dockflare/redis:/data"],
         environment: {},
+        healthcheck: {
+          test: ["CMD", "redis-cli", "ping"],
+          interval: "10s",
+          timeout: "5s",
+          retries: 5,
+        },
       },
     ],
     notes: "Mounts the Docker socket directly — the project's own hardened stack instead proxies it through tecnativa/docker-socket-proxy, which is worth adding for production use. Log in with your Cloudflare account on first visit.",
@@ -712,6 +754,13 @@ const SERVICES = {
           POSTGRES_USER: "authentik",
           POSTGRES_PASSWORD: "changeme",
         },
+        healthcheck: {
+          test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"],
+          interval: "10s",
+          timeout: "5s",
+          retries: 5,
+          startPeriod: "10s",
+        },
       },
     ],
     notes: "This is 3 containers (server, worker, database) — change every 'changeme' value, and make sure AUTHENTIK_POSTGRESQL__PASSWORD and AUTHENTIK_SECRET_KEY are identical between the server and worker sections, matching the database's POSTGRES_PASSWORD. The worker mounts the Docker socket for managing outposts — that grants it full Docker API access, same caution as Homarr/Portracker/DockFlare.",
@@ -857,6 +906,12 @@ const SERVICES = {
         image: "redis:7-alpine",
         volumes: [],
         environment: {},
+        healthcheck: {
+          test: ["CMD", "redis-cli", "ping"],
+          interval: "10s",
+          timeout: "5s",
+          retries: 5,
+        },
       },
     ],
     notes: "Drop files into ./paperless/consume and Paperless-ngx automatically scans, OCRs and files them away.",
@@ -1217,6 +1272,386 @@ const SERVICES = {
     },
     notes: "API_KEY needs a scoped Cloudflare API token (DNS edit permission on the zone), not your global API key. Leave SUBDOMAIN blank to update the root domain itself instead of a subdomain.",
   },
+
+  authelia: {
+    name: "Authelia",
+    icon: `${ICON_BASE}/authelia.svg`,
+    homepage: "https://www.authelia.com/",
+    image: "authelia/authelia:latest",
+    sourceUrl: "https://raw.githubusercontent.com/authelia/authelia/master/README.md",
+    sourceHash: "f090f260eb7d619064461ebbb0a30193a0771fb20bd33bab7ba79039b3a77094",
+    description: "Self-hosted single sign-on and two-factor auth portal that sits in front of your other services via a reverse proxy.",
+    tags: ["security", "network", "passwords"],
+    ports: [{ container: 9091, host: 9091, label: "Web UI" }],
+    volumes: ["./authelia/config:/config"],
+    environment: { TZ: "Etc/UTC" },
+    notes: "Needs its own configuration.yml in ./authelia/config before it will start — unlike most of this catalog, Authelia has no env-var-only mode. Generate one from Authelia's own configuration docs, and put real random values in the JWT_SECRET/SESSION_SECRET/STORAGE_ENCRYPTION_KEY secrets it references — this only creates the container, not that file. Meant to run behind a reverse proxy (Traefik/nginx/Caddy) that forwards auth checks to it, not accessed directly.",
+  },
+
+  beszel: {
+    name: "Beszel",
+    icon: `${ICON_BASE}/beszel.svg`,
+    homepage: "https://beszel.dev/",
+    image: "henrygd/beszel:latest",
+    sourceUrl: "https://raw.githubusercontent.com/henrygd/beszel/main/readme.md",
+    sourceHash: "8a7eb6d2cf184d87858525405efe5a41ac7ed5a2c0fa0ba5612116ee16cdd2a9",
+    description: "Lightweight server monitoring hub — CPU, memory, disk and network history for every machine running its agent.",
+    tags: ["monitoring"],
+    ports: [{ container: 8090, host: 8090, label: "Web UI" }],
+    volumes: ["./beszel/data:/beszel_data"],
+    environment: {},
+    notes: "This is just the hub — it shows nothing until you also install beszel-agent on each machine you want to monitor (including this one, if you want it listed), which the hub's own web UI can generate a one-line install command for. Create the first admin account on your initial visit.",
+  },
+
+  caddy: {
+    name: "Caddy",
+    icon: `${ICON_BASE}/caddy.svg`,
+    homepage: "https://caddyserver.com/",
+    image: "caddy:latest",
+    sourceUrl: "https://raw.githubusercontent.com/caddyserver/caddy/master/README.md",
+    sourceHash: "a64c3359efca2147fe9d3bf554076ea67bf5588394fc7a693fc22385ccbf0006",
+    description: "Reverse proxy and web server that gets you free, automatic HTTPS certificates with almost no configuration.",
+    tags: ["network", "proxy", "ssl"],
+    ports: [
+      { container: 80, host: 80, label: "HTTP" },
+      { container: 443, host: 443, label: "HTTPS" },
+      { container: 443, host: 443, label: "HTTP/3", protocol: "udp" },
+    ],
+    volumes: ["./caddy/Caddyfile:/etc/caddy/Caddyfile", "./caddy/data:/data", "./caddy/config:/config"],
+    environment: {},
+    notes: "Create ./caddy/Caddyfile before starting (even one line like 'localhost { respond \"Hello\" }' confirms it's running), then restart the container after edits to apply them. ./caddy/data holds its automatically-issued TLS certificates — losing it means re-issuing them, which Let's Encrypt rate-limits. If reloads stop picking up edits, some editors replace the file via rename, which can break a single-file mount — mount ./caddy as a whole folder at /etc/caddy instead if that happens.",
+  },
+
+  "calibre-web": {
+    name: "Calibre-Web",
+    icon: `${ICON_BASE}/calibre-web.svg`,
+    homepage: "https://github.com/janeczku/calibre-web",
+    image: "lscr.io/linuxserver/calibre-web:latest",
+    description: "Web UI for browsing, reading and sending books from an existing Calibre library.",
+    tags: ["media", "books"],
+    ports: [{ container: 8083, host: 8083, label: "Web UI" }],
+    volumes: ["./calibre-web/config:/config", "./calibre-web/books:/books"],
+    environment: { PUID: "1000", PGID: "1000", TZ: "Etc/UTC" },
+    notes: "Needs an existing Calibre library (a folder with a metadata.db in it) mounted at /books — Calibre-Web reads and serves one, it doesn't create one from scratch. Default login is admin / admin123 — change it immediately.",
+  },
+
+  dawarich: {
+    name: "Dawarich",
+    icon: `${ICON_BASE}/dawarich.svg`,
+    homepage: "https://dawarich.app/",
+    image: "freikin/dawarich:latest",
+    sourceUrl: "https://raw.githubusercontent.com/Freika/dawarich/master/docker/docker-compose.yml",
+    sourceHash: "45595e35e1dfece66d29207ed773aa1dec2cb5dddcd90216e3d1579364d84892",
+    description: "Self-hosted alternative to Google Timeline — import your location history and browse it on a map.",
+    tags: ["tools", "maps"],
+    ports: [{ container: 3000, host: 3000, label: "Web UI" }],
+    volumes: [
+      "./dawarich/public:/var/app/public",
+      "./dawarich/watched:/var/app/tmp/imports/watched",
+      "./dawarich/storage:/var/app/storage",
+      "./dawarich/db:/dawarich_db_data",
+    ],
+    environment: {
+      RAILS_ENV: "production",
+      REDIS_URL: "redis://dawarich-redis:6379",
+      DATABASE_HOST: "dawarich-db",
+      DATABASE_PORT: "5432",
+      DATABASE_USERNAME: "postgres",
+      DATABASE_PASSWORD: "changeme",
+      DATABASE_NAME: "dawarich_production",
+      TIME_ZONE: "Etc/UTC",
+      SECRET_KEY_BASE: "changeme-generate-with-openssl-rand-hex-64",
+    },
+    extraLines: ["entrypoint: web-entrypoint.sh"],
+    runExtraArgs: ["--entrypoint=web-entrypoint.sh"],
+    runCommandArgs: ["bin/rails", "server", "-p", "3000", "-b", "::"],
+    dependsOn: [
+      {
+        key: "dawarich-redis",
+        name: "Redis (for Dawarich)",
+        image: "redis:7.4-alpine",
+        volumes: ["./dawarich/shared:/data"],
+        environment: {},
+        healthcheck: {
+          test: ["CMD", "redis-cli", "--raw", "incr", "ping"],
+          interval: "10s",
+          timeout: "10s",
+          retries: 5,
+          startPeriod: "30s",
+        },
+      },
+      {
+        key: "dawarich-db",
+        name: "PostgreSQL + PostGIS (for Dawarich)",
+        image: "postgis/postgis:17-3.5-alpine",
+        volumes: ["./dawarich/db:/var/lib/postgresql/data"],
+        environment: {
+          POSTGRES_USER: "postgres",
+          POSTGRES_PASSWORD: "changeme",
+          POSTGRES_DB: "dawarich_production",
+        },
+        healthcheck: {
+          test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"],
+          interval: "10s",
+          timeout: "10s",
+          retries: 5,
+          startPeriod: "30s",
+        },
+      },
+      {
+        key: "dawarich-sidekiq",
+        name: "Sidekiq Worker (for Dawarich)",
+        image: "freikin/dawarich:latest",
+        volumes: [
+          "./dawarich/public:/var/app/public",
+          "./dawarich/watched:/var/app/tmp/imports/watched",
+          "./dawarich/storage:/var/app/storage",
+        ],
+        environment: {
+          RAILS_ENV: "production",
+          REDIS_URL: "redis://dawarich-redis:6379",
+          DATABASE_HOST: "dawarich-db",
+          DATABASE_PORT: "5432",
+          DATABASE_USERNAME: "postgres",
+          DATABASE_PASSWORD: "changeme",
+          DATABASE_NAME: "dawarich_production",
+          SECRET_KEY_BASE: "changeme-generate-with-openssl-rand-hex-64",
+        },
+        extraLines: ["entrypoint: sidekiq-entrypoint.sh"],
+        runExtraArgs: ["--entrypoint=sidekiq-entrypoint.sh"],
+        runCommandArgs: ["sidekiq"],
+      },
+    ],
+    notes: "This is 4 containers (app, background worker, PostgreSQL+PostGIS, Redis). SECRET_KEY_BASE needs a real value — Rails won't start with the placeholder. DATABASE_PASSWORD must be identical across the app, sidekiq worker and database sections.",
+  },
+
+  documenso: {
+    name: "Documenso",
+    icon: `${ICON_BASE}/documenso.svg`,
+    homepage: "https://documenso.com/",
+    image: "documenso/documenso:latest",
+    sourceUrl: "https://raw.githubusercontent.com/documenso/documenso/main/docker/production/compose.yml",
+    sourceHash: "d96db3efed3bd278f336c73c9949b3513ebce62dd6838f3534ab12bd9d1c1500",
+    description: "Open-source document signing platform — a self-hosted alternative to DocuSign.",
+    tags: ["productivity", "documents"],
+    ports: [{ container: 3000, host: 3000, label: "Web UI" }],
+    volumes: ["./documenso/cert.p12:/opt/documenso/cert.p12:ro"],
+    environment: {
+      NEXTAUTH_SECRET: "changeme-generate-with-openssl-rand-base64-32",
+      NEXT_PRIVATE_ENCRYPTION_KEY: "changeme-at-least-32-chars",
+      NEXT_PRIVATE_ENCRYPTION_SECONDARY_KEY: "changeme-at-least-32-chars",
+      NEXT_PRIVATE_DATABASE_URL: "postgresql://documenso:changeme@documenso-db:5432/documenso",
+      NEXT_PUBLIC_WEBAPP_URL: "http://localhost:3000",
+      NEXT_PRIVATE_INTERNAL_WEBAPP_URL: "http://localhost:3000",
+    },
+    dependsOn: [
+      {
+        key: "documenso-db",
+        name: "PostgreSQL (for Documenso)",
+        image: "postgres:15",
+        volumes: ["./documenso/db:/var/lib/postgresql/data"],
+        environment: {
+          POSTGRES_USER: "documenso",
+          POSTGRES_PASSWORD: "changeme",
+          POSTGRES_DB: "documenso",
+        },
+        healthcheck: {
+          test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"],
+          interval: "10s",
+          timeout: "5s",
+          retries: 5,
+          startPeriod: "10s",
+        },
+      },
+    ],
+    notes: "NEXT_PRIVATE_DATABASE_URL's embedded password must match documenso-db's POSTGRES_PASSWORD. Signing documents needs a real certificate at ./documenso/cert.p12 — generate a self-signed one (see Documenso's docker-compose docs for the exact openssl command) before starting, or signing will fail even though the app itself starts fine. NEXT_PUBLIC_WEBAPP_URL must be the actual address you'll reach this at.",
+  },
+
+  dozzle: {
+    name: "Dozzle",
+    icon: `${ICON_BASE}/dozzle.svg`,
+    homepage: "https://dozzle.dev/",
+    image: "amir20/dozzle:latest",
+    sourceUrl: "https://raw.githubusercontent.com/amir20/dozzle/master/README.md",
+    sourceHash: "ae898c4486c41a2124dfde7a8958dbe85de959fcfbf725d63fe5e63f82a88fd4",
+    description: "Real-time log viewer for every container on the host, right from a web browser — no configuration needed.",
+    tags: ["monitoring", "docker", "logs"],
+    ports: [{ container: 8080, host: 8080, label: "Web UI" }],
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro", "./dozzle/data:/data"],
+    environment: {},
+    notes: "Mounts the Docker socket (read-only) to see every container's logs — only run it on a trusted network. No login by default; see Dozzle's docs for DOZZLE_AUTH_PROVIDER if you want one.",
+  },
+
+  duplicati: {
+    name: "Duplicati",
+    icon: `${ICON_BASE}/duplicati.svg`,
+    homepage: "https://duplicati.com/",
+    image: "lscr.io/linuxserver/duplicati:latest",
+    description: "Encrypted, incremental backups to local storage or most cloud providers (S3, Backblaze, Google Drive, ...).",
+    tags: ["backup", "tools"],
+    ports: [{ container: 8200, host: 8200, label: "Web UI" }],
+    volumes: ["./duplicati/config:/config", "./duplicati/backups:/backups", "./duplicati/source:/source"],
+    environment: { PUID: "1000", PGID: "1000", TZ: "Etc/UTC", SETTINGS_ENCRYPTION_KEY: "changeme-generate-with-openssl-rand-base64-32" },
+    notes: "Mount whatever you actually want backed up at /source (add :ro if you like) — it's a placeholder path here, not real data. SETTINGS_ENCRYPTION_KEY needs a real random value; Duplicati otherwise generates its own on first run and won't accept one added later without a reset.",
+  },
+
+  emby: {
+    name: "Emby",
+    icon: `${ICON_BASE}/emby.svg`,
+    homepage: "https://emby.media/",
+    image: "emby/embyserver:latest",
+    description: "Media server for movies, TV and music, with apps for nearly every TV, phone and streaming device.",
+    tags: ["media", "movies", "tv", "music"],
+    ports: [
+      { container: 8096, host: 8096, label: "Web UI" },
+      { container: 8920, host: 8920, label: "Web UI (HTTPS)" },
+    ],
+    volumes: ["./emby/config:/config", "./media:/mnt/media"],
+    environment: { UID: "1000", GID: "1000" },
+    notes: "Some features (DLNA discovery, Wake-on-LAN) only work with network_mode: host instead of published ports — see the guide's port-checking section if you switch to that. Hardware transcoding needs extra --device flags (e.g. /dev/dri) this generator doesn't add automatically.",
+  },
+
+  "filebrowser-quantum": {
+    name: "Filebrowser Quantum",
+    icon: `${ICON_BASE}/filebrowser-quantum.svg`,
+    homepage: "https://filebrowserquantum.com/",
+    image: "gtstef/filebrowser:beta",
+    sourceUrl: "https://raw.githubusercontent.com/gtsteffaniak/filebrowser/main/README.md",
+    sourceHash: "a24a52193b9a6dbaee9fef426b2825883a4e4672cf569acbf17650c599f5ba0f",
+    description: "Actively-developed rewrite of Filebrowser — a faster web file manager with previews, sharing and access rules.",
+    tags: ["files", "tools"],
+    ports: [{ container: 80, host: 8085, label: "Web UI" }],
+    volumes: ["./filebrowser-quantum/folder:/folder", "./filebrowser-quantum/data:/home/filebrowser/data"],
+    environment: {},
+    notes: "Needs a config.yaml in ./filebrowser-quantum/data before first run — a minimal one just needs a server.sources entry pointing at /folder (see the project's getting-started docs for the exact format). Default login is admin / admin — change it immediately. `:beta` is this project's own current recommended tag for its actively-developed v2 line, not a warning to avoid it — see their Docker docs if you'd rather pin a specific version.",
+  },
+
+  metube: {
+    name: "MeTube",
+    icon: `${ICON_BASE}/metube.svg`,
+    homepage: "https://github.com/alexta69/metube",
+    image: "ghcr.io/alexta69/metube:latest",
+    sourceUrl: "https://raw.githubusercontent.com/alexta69/metube/master/README.md",
+    sourceHash: "2ca02be7a66f2023167b573574f3120edc567faf02b5abacdb8254a459ab2207",
+    description: "Web UI around yt-dlp for downloading video/audio from YouTube and hundreds of other sites.",
+    tags: ["media", "tools"],
+    ports: [{ container: 8081, host: 8081, label: "Web UI" }],
+    volumes: ["./metube/downloads:/downloads"],
+    environment: { PUID: "1000", PGID: "1000" },
+    notes: "Downloaded files land directly in the mounted /downloads folder, named by title — point it at wherever you actually want them to end up.",
+  },
+
+  rustdesk: {
+    name: "RustDesk",
+    icon: `${ICON_BASE}/rustdesk.svg`,
+    homepage: "https://rustdesk.com/",
+    image: "rustdesk/rustdesk-server:latest",
+    sourceUrl: "https://raw.githubusercontent.com/rustdesk/rustdesk-server/master/docker-compose.yml",
+    sourceHash: "cc279f1b5401438434d86b4adb88930fe4362b4de99fe7cd348dbf2c6e115921",
+    description: "Self-hosted relay/rendezvous server for RustDesk — remote desktop without routing through RustDesk's own public servers.",
+    tags: ["tools", "network"],
+    ports: [
+      { container: 21115, host: 21115, label: "hbbs" },
+      { container: 21116, host: 21116, label: "hbbs" },
+      { container: 21116, host: 21116, label: "hbbs (UDP)", protocol: "udp" },
+      { container: 21118, host: 21118, label: "hbbs" },
+    ],
+    volumes: ["./rustdesk/data:/root"],
+    environment: {},
+    extraLines: ["command: hbbs -r your-server-address:21117"],
+    runCommandArgs: ["hbbs", "-r", "your-server-address:21117"],
+    dependsOn: [
+      {
+        key: "rustdesk-hbbr",
+        name: "hbbr Relay Server (for RustDesk)",
+        image: "rustdesk/rustdesk-server:latest",
+        volumes: ["./rustdesk/data:/root"],
+        environment: {},
+        extraLines: ["command: hbbr"],
+        runCommandArgs: ["hbbr"],
+      },
+    ],
+    notes: "Two containers — hbbs (this one, the ID/rendezvous server) and hbbr (relay, port 21117/21119 — add those to hbbr's own ports if you edit this). Change 'your-server-address' in hbbs's command to this host's actual public IP or domain, or clients won't be able to find the relay. On first run this generates an ed25519 keypair in ./rustdesk/data — the public key (id_ed25519.pub) is what you paste into each RustDesk client's network settings.",
+  },
+
+  sftpgo: {
+    name: "SFTPGo",
+    icon: placeholderIcon("S"),
+    homepage: "https://github.com/drakkan/sftpgo",
+    image: "drakkan/sftpgo:latest",
+    sourceUrl: "https://raw.githubusercontent.com/drakkan/sftpgo/main/README.md",
+    sourceHash: "5b6ff7707938f35e5fef87ecb021ca050ca9e13e4d0422057b2468dc47a49a24",
+    description: "Full-featured SFTP/FTP/WebDAV server with a web admin UI and per-user storage backends (local, S3, GCS, Azure).",
+    tags: ["files", "network"],
+    ports: [
+      { container: 2022, host: 2022, label: "SFTP" },
+      { container: 8080, host: 8080, label: "Web Admin/Client" },
+    ],
+    volumes: ["./sftpgo/data:/srv/sftpgo", "./sftpgo/config:/var/lib/sftpgo"],
+    environment: {},
+    notes: "Runs as UID/GID 1000 by default — make sure ./sftpgo/data and ./sftpgo/config are owned by that user on the host, or SFTPGo won't be able to write to them. Create the first admin account from the web UI on initial visit.",
+  },
+
+  transmission: {
+    name: "Transmission",
+    icon: `${ICON_BASE}/transmission.svg`,
+    homepage: "https://transmissionbt.com/",
+    image: "lscr.io/linuxserver/transmission:latest",
+    description: "Lightweight BitTorrent client with a web UI, run as a headless daemon.",
+    tags: ["downloads", "torrent"],
+    ports: [
+      { container: 9091, host: 9091, label: "Web UI" },
+      { container: 51413, host: 51413, label: "Peer Port" },
+      { container: 51413, host: 51413, label: "Peer Port (UDP)", protocol: "udp" },
+    ],
+    volumes: ["./transmission/config:/config", "./transmission/downloads:/downloads", "./transmission/watch:/watch"],
+    environment: { PUID: "1000", PGID: "1000", TZ: "Etc/UTC" },
+    notes: "Drop a .torrent file into the /watch folder to add it automatically. This has no web UI login by default — see the image's USER/PASS environment variables in its docs if you want one.",
+  },
+
+  wordpress: {
+    name: "WordPress",
+    icon: `${ICON_BASE}/wordpress.svg`,
+    homepage: "https://wordpress.org/",
+    image: "wordpress:latest",
+    sourceUrl: "https://raw.githubusercontent.com/docker-library/wordpress/master/README.md",
+    sourceHash: "5d003c2740002fcc5e3e1f6780d94b78eeb261858a0075c2631270ad262bf5cd",
+    description: "The world's most-used content management system — blogs, sites, and everything built on top of it.",
+    tags: ["cms", "productivity"],
+    ports: [{ container: 80, host: 8091, label: "Web UI" }],
+    volumes: ["./wordpress/html:/var/www/html"],
+    environment: {
+      WORDPRESS_DB_HOST: "wordpress-db",
+      WORDPRESS_DB_USER: "wordpress",
+      WORDPRESS_DB_PASSWORD: "changeme",
+      WORDPRESS_DB_NAME: "wordpress",
+    },
+    dependsOn: [
+      {
+        key: "wordpress-db",
+        name: "MySQL (for WordPress)",
+        image: "mysql:8.0",
+        volumes: ["./wordpress/db:/var/lib/mysql"],
+        environment: {
+          MYSQL_DATABASE: "wordpress",
+          MYSQL_USER: "wordpress",
+          MYSQL_PASSWORD: "changeme",
+          MYSQL_RANDOM_ROOT_PASSWORD: "true",
+        },
+        // Authenticates as the app's own user, not root — root's password
+        // is randomly generated (MYSQL_RANDOM_ROOT_PASSWORD above) and
+        // never available to reference here.
+        healthcheck: {
+          test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u $MYSQL_USER --password=\"$MYSQL_PASSWORD\""],
+          interval: "10s",
+          timeout: "5s",
+          retries: 5,
+          startPeriod: "10s",
+        },
+      },
+    ],
+    notes: "WORDPRESS_DB_PASSWORD must match wordpress-db's MYSQL_PASSWORD. The setup wizard runs at first visit — pick your site title and admin login there, there's no environment variable for it.",
+  },
 };
 
 // Bundles of related services the picker can toggle as one unit — see
@@ -1266,18 +1701,36 @@ function allTags() {
 // in the compose file/run script; the warnings banner explains *why* a
 // value differs from what was typed or from the service's default.
 //
-// hostPortsInUse (optional) is [{ host, protocol, container }] for ports
+// A bind IP of "" means "all interfaces" (0.0.0.0/::) — Docker's default,
+// and still the default here. Once a specific IP is in play, the same host
+// port number legitimately works on more than one IP at once (127.0.0.1:5432
+// and 192.168.1.50:5432 don't collide) — only "all interfaces" collides
+// with everything, since it covers every specific IP too.
+function bindConflicts(existingIps, candidateIp) {
+  if (candidateIp === "") return existingIps.length > 0;
+  return existingIps.some((ip) => ip === "" || ip === candidateIp);
+}
+
+// hostPortsInUse (optional) is [{ host, protocol, container, ip }] for ports
 // already published by currently-running containers — see live-ports.json
-// in app.js. Seeding `used` with these means a selected service's port
-// gets flagged and reassigned exactly like an inter-service conflict would,
-// just with a message naming the running container instead.
-function resolvePortConflicts(selectedKeys, extraPorts, portOverrides, hostPortsInUse) {
-  const used = new Set();
-  const hostOwners = {}; // portId -> running container name, for a clearer message
+// in app.js. Seeding `usedByPortProto` with these means a selected service's
+// port gets flagged and reassigned exactly like an inter-service conflict
+// would, just with a message naming the running container instead. `ip` may
+// be omitted by older/partial data — treated the same as "" (all interfaces).
+function resolvePortConflicts(selectedKeys, extraPorts, portOverrides, bindIpOverrides, hostPortsInUse) {
+  const usedByPortProto = new Map(); // "host/proto" -> [{ip, owner}]
+  const hostOwners = {}; // "host/proto/ip" -> running container name, for a clearer message
+
+  function claim(host, protocol, ip, owner) {
+    const bucketKey = `${host}/${protocol}`;
+    const bucket = usedByPortProto.get(bucketKey) || [];
+    bucket.push({ ip, owner });
+    usedByPortProto.set(bucketKey, bucket);
+    if (owner) hostOwners[`${bucketKey}/${ip}`] = owner;
+  }
+
   for (const p of hostPortsInUse || []) {
-    const portId = `${p.host}/${p.protocol || "tcp"}`;
-    used.add(portId);
-    hostOwners[portId] = p.container;
+    claim(p.host, p.protocol || "tcp", p.ip || "", p.container);
   }
 
   const assignments = {};
@@ -1294,9 +1747,11 @@ function resolvePortConflicts(selectedKeys, extraPorts, portOverrides, hostPorts
     svc.ports.forEach((p, i) => {
       const portKey = `${prefix}_PORT_${i}`;
       const host = Number(portOverrides?.[portKey] ?? p.host);
+      const bindIp = bindIpOverrides?.[portKey] ?? "";
       const entry = {
         portKey,
         host,
+        bindIp,
         container: p.container,
         protocol: p.protocol,
         defaultHost: p.host,
@@ -1306,7 +1761,7 @@ function resolvePortConflicts(selectedKeys, extraPorts, portOverrides, hostPorts
       };
       portEntries.push(entry);
       entryRefs.push(entry);
-      resolvedPorts.push({ ...p, host });
+      resolvedPorts.push({ ...p, host, bindIp });
     });
 
     (extraPorts?.[key] || [])
@@ -1314,9 +1769,11 @@ function resolvePortConflicts(selectedKeys, extraPorts, portOverrides, hostPorts
       .forEach((p, i) => {
         const host = Number(p.host);
         const container = Number(p.container);
+        const bindIp = p.bindIp || "";
         const entry = {
           portKey: `${prefix}_EXTRA_PORT_${i}`,
           host,
+          bindIp,
           container,
           isExtra: true,
           extraIndex: i,
@@ -1325,15 +1782,22 @@ function resolvePortConflicts(selectedKeys, extraPorts, portOverrides, hostPorts
         };
         portEntries.push(entry);
         entryRefs.push(entry);
-        resolvedPorts.push({ host, container, label: "Added port" });
+        resolvedPorts.push({ host, container, bindIp, label: "Added port" });
       });
 
     resolvedPorts.forEach((port, i) => {
-      const portId = `${port.host}/${port.protocol || "tcp"}`;
-      if (used.has(portId)) {
+      const protocol = port.protocol || "tcp";
+      const bucketKey = `${port.host}/${protocol}`;
+      const existingIps = (usedByPortProto.get(bucketKey) || []).map((e) => e.ip);
+      if (bindConflicts(existingIps, port.bindIp)) {
         let candidate = 8000;
-        while (used.has(`${candidate}/${port.protocol || "tcp"}`)) candidate++;
-        const runningContainer = hostOwners[portId];
+        while (bindConflicts((usedByPortProto.get(`${candidate}/${protocol}`) || []).map((e) => e.ip), port.bindIp)) {
+          candidate++;
+        }
+        const conflicting = (usedByPortProto.get(bucketKey) || []).find(
+          (e) => e.ip === "" || e.ip === port.bindIp || port.bindIp === ""
+        );
+        const runningContainer = conflicting && hostOwners[`${bucketKey}/${conflicting.ip}`];
         const reason = runningContainer
           ? `is already in use on this host by the running container "${runningContainer}"`
           : `was already taken`;
@@ -1341,7 +1805,11 @@ function resolvePortConflicts(selectedKeys, extraPorts, portOverrides, hostPorts
         port.host = candidate;
         entryRefs[i].host = candidate;
       }
-      used.add(`${port.host}/${port.protocol || "tcp"}`);
+      // No owner passed here — only hostPortsInUse's seed claims (above)
+      // should ever produce a "running container" label; a conflict
+      // between two just-selected services should still read as the
+      // generic "was already taken", matching pre-bind-IP behavior.
+      claim(port.host, protocol, port.bindIp);
     });
 
     assignments[key] = resolvedPorts;
@@ -1363,6 +1831,33 @@ function parseVolume(volumeStr) {
 // services and their injected dependencies (e.g. nextcloud-db).
 function buildServiceBlock(key, def, ports, ownerName, volumeOverrides, extraVolumes) {
   const lines = [`  ${key}:`, `    image: ${def.image}`, `    container_name: ${key}`, `    restart: unless-stopped`];
+
+  // Declares this service's own health, so anything that depends on it
+  // (see depends_on below) can wait for "actually ready" instead of just
+  // "container process started" — a database can take a few seconds after
+  // start before it's accepting connections, and a plain depends_on can't
+  // tell the difference.
+  if (def.healthcheck) {
+    lines.push(`    healthcheck:`);
+    lines.push(`      test: [${def.healthcheck.test.map((t) => JSON.stringify(t)).join(", ")}]`);
+    lines.push(`      interval: ${def.healthcheck.interval}`);
+    lines.push(`      timeout: ${def.healthcheck.timeout}`);
+    lines.push(`      retries: ${def.healthcheck.retries}`);
+    if (def.healthcheck.startPeriod) lines.push(`      start_period: ${def.healthcheck.startPeriod}`);
+  }
+
+  // Long form (condition: ...) throughout, even for a dependency with no
+  // healthcheck of its own (service_started) — Compose doesn't allow
+  // mixing the short list syntax with the condition-mapping syntax within
+  // one service's depends_on, and several services here have a mix of
+  // both kinds of dependency (e.g. Authentik's worker vs. its database).
+  if (def.dependsOn && def.dependsOn.length) {
+    lines.push(`    depends_on:`);
+    for (const dep of def.dependsOn) {
+      lines.push(`      ${dep.key}:`);
+      lines.push(`        condition: ${dep.healthcheck ? "service_healthy" : "service_started"}`);
+    }
+  }
 
   // network_mode is incompatible with a ports: section in compose, so
   // callers that set this also pass an empty ports array.
@@ -1388,7 +1883,8 @@ function buildServiceBlock(key, def, ports, ownerName, volumeOverrides, extraVol
     lines.push(`    ports:`);
     for (const p of ports) {
       const proto = p.protocol ? `/${p.protocol}` : "";
-      lines.push(`      - "${p.host}:${p.container}${proto}"`);
+      const bind = p.bindIp ? `${p.bindIp}:` : "";
+      lines.push(`      - "${bind}${p.host}:${p.container}${proto}"`);
     }
   }
 
@@ -1466,7 +1962,8 @@ function buildRunCommand(key, def, ports, networkName, volumeOverrides, extraVol
   if (!def.networkMode) {
     for (const p of ports || []) {
       const proto = p.protocol ? `/${p.protocol}` : "";
-      args.push(`-p ${p.host}:${p.container}${proto}`);
+      const bind = p.bindIp ? `${p.bindIp}:` : "";
+      args.push(`-p ${bind}${p.host}:${p.container}${proto}`);
     }
   }
 
@@ -1521,11 +2018,12 @@ function wrapRunScript(bodyLines, envFilename) {
 
 // One compose file covering every selected service (+ their
 // dependencies). This is the original v1 behavior.
-function generateCombined(selectedKeys, volumeOverrides, extraVolumes, extraPorts, portOverrides, hostPortsInUse) {
+function generateCombined(selectedKeys, volumeOverrides, extraVolumes, extraPorts, portOverrides, bindIpOverrides, hostPortsInUse) {
   const { assignments, warnings, portEntries } = resolvePortConflicts(
     selectedKeys,
     extraPorts,
     portOverrides,
+    bindIpOverrides,
     hostPortsInUse
   );
   const lines = ["services:"];
@@ -1541,8 +2039,11 @@ function generateCombined(selectedKeys, volumeOverrides, extraVolumes, extraPort
     lines.push(...block.lines);
     envEntries.push(...block.envEntries);
     volumeEntries.push(...block.volumeEntries);
-    runLines.push(buildRunCommand(key, def, assignments[key], networkName, volumeOverrides, extraVolumes), "");
 
+    // Dependencies' `docker run` commands go first — compose's depends_on
+    // (in buildServiceBlock) makes the YAML block order above irrelevant,
+    // but a plain run script executes sequentially, so a database
+    // actually needs to be started before the app that connects to it.
     for (const dep of def.dependsOn || []) {
       const depBlock = buildServiceBlock(dep.key, dep, [], dep.name, volumeOverrides, extraVolumes);
       lines.push(...depBlock.lines);
@@ -1550,6 +2051,8 @@ function generateCombined(selectedKeys, volumeOverrides, extraVolumes, extraPort
       volumeEntries.push(...depBlock.volumeEntries);
       runLines.push(buildRunCommand(dep.key, dep, [], networkName, volumeOverrides, extraVolumes), "");
     }
+
+    runLines.push(buildRunCommand(key, def, assignments[key], networkName, volumeOverrides, extraVolumes), "");
 
     if (def.notes) notes.push(def.notes);
   }
@@ -1569,11 +2072,12 @@ function generateCombined(selectedKeys, volumeOverrides, extraVolumes, extraPort
 // injected dependency (e.g. nextcloud-db) stays bundled with it in
 // the same file, since they need to share a default network to find
 // each other by container name.
-function generateSeparate(selectedKeys, volumeOverrides, extraVolumes, extraPorts, portOverrides, hostPortsInUse) {
+function generateSeparate(selectedKeys, volumeOverrides, extraVolumes, extraPorts, portOverrides, bindIpOverrides, hostPortsInUse) {
   const { assignments, warnings, portEntries } = resolvePortConflicts(
     selectedKeys,
     extraPorts,
     portOverrides,
+    bindIpOverrides,
     hostPortsInUse
   );
   const files = selectedKeys.map((key) => {
@@ -1588,8 +2092,10 @@ function generateSeparate(selectedKeys, volumeOverrides, extraVolumes, extraPort
     lines.push(...block.lines);
     envEntries.push(...block.envEntries);
     volumeEntries.push(...block.volumeEntries);
-    runLines.push(buildRunCommand(key, def, assignments[key], networkName, volumeOverrides, extraVolumes), "");
 
+    // Same reasoning as generateCombined: dependencies run before the
+    // service that needs them, since a plain run script has no depends_on
+    // to fall back on.
     for (const dep of def.dependsOn || []) {
       const depBlock = buildServiceBlock(dep.key, dep, [], dep.name, volumeOverrides, extraVolumes);
       lines.push(...depBlock.lines);
@@ -1597,6 +2103,8 @@ function generateSeparate(selectedKeys, volumeOverrides, extraVolumes, extraPort
       volumeEntries.push(...depBlock.volumeEntries);
       runLines.push(buildRunCommand(dep.key, dep, [], networkName, volumeOverrides, extraVolumes), "");
     }
+
+    runLines.push(buildRunCommand(key, def, assignments[key], networkName, volumeOverrides, extraVolumes), "");
 
     return {
       filename: `docker-compose.${key}.yml`,

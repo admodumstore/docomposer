@@ -50,6 +50,33 @@ def deploy_enabled():
     return bool(DEPLOY_BASE_DIR) and os.path.isdir(DEPLOY_BASE_DIR)
 
 
+# Manual "open at this port/scheme" overrides for the Dashboard's name
+# link, for the containers no amount of Docker-API inspection can resolve
+# (e.g. Sabnzbd behind a shared-namespace VPN gateway — its port lives only
+# in its own config file, invisible to Docker entirely). Keyed by container
+# name rather than id, since names are what survive a recreate and what the
+# user actually recognizes; stored under DEPLOY_BASE_DIR so it's shared by
+# every browser/device that opens this dashboard, not just the one that set
+# it, matching there being no per-user login here at all.
+def _link_overrides_path():
+    return os.path.join(DEPLOY_BASE_DIR, ".docomposer", "link-overrides.json")
+
+
+def _load_link_overrides():
+    try:
+        with open(_link_overrides_path()) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_link_overrides(overrides):
+    path = _link_overrides_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(overrides, f, indent=2)
+
+
 # ---- talking to the Docker Engine API over the socket (stdlib only) ------
 
 class UnixHTTPConnection(http.client.HTTPConnection):
@@ -155,41 +182,171 @@ CONTAINER_NAME_RE = re.compile(r"^\s*container_name:\s*(\S+)\s*$", re.MULTILINE)
 # ports it actually uses are whatever its image EXPOSEs, since host
 # networking means container port == host port; Config.ExposedPorts on
 # the full inspect is the closest thing to ground truth available.
-# Formatted as "port:port/proto" — a self-mapping — so callers can reuse
-# the same "host:container/proto" parsing they already use for published
-# ports.
-def _host_network_ports(container_id):
+def _normalize_ip(ip):
+    # "" means "every interface" — Docker reports this as 0.0.0.0 (IPv4),
+    # :: (IPv6), or sometimes just omits it; the frontend only ever needs
+    # to tell "every interface" apart from one specific address.
+    return ip if ip and ip not in ("0.0.0.0", "::") else ""
+
+
+def _dedupe_ports(ports):
+    seen = set()
+    result = []
+    for p in ports:
+        key = (p["host"], p["container"], p["protocol"], p["ip"])
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(p)
+    return result
+
+
+def _own_exposed_ports(container_id):
     status, info = docker_api_json("GET", f"/containers/{urllib.parse.quote(container_id)}/json")
     if status != 200 or not info:
         return []
     exposed = ((info.get("Config") or {}).get("ExposedPorts")) or {}
-    ports = []
+    result = []
     for key in exposed:
         port, _, proto = key.partition("/")
         if port.isdigit():
-            ports.append(f"{port}:{port}/{proto or 'tcp'}")
-    return ports
+            result.append((int(port), proto or "tcp"))
+    return result
+
+
+def _host_network_ports(container_id):
+    return [
+        {"host": port, "container": port, "protocol": proto, "ip": ""}
+        for port, proto in _own_exposed_ports(container_id)
+    ]
+
+
+def _inspect(container_id):
+    status, info = docker_api_json("GET", f"/containers/{urllib.parse.quote(container_id)}/json")
+    return info if status == 200 else None
+
+
+# Two well-known env var conventions expose an app's real listening port
+# directly, which matters most for containers sharing a VPN gateway's
+# network namespace (Gluetun and similar), where the gateway's own
+# published-port mapping is keyed off whatever port the app actually
+# listens on rather than the image's default EXPOSE:
+#  - The *arr Servarr family (Sonarr, Radarr, Lidarr, Prowlarr, Readarr,
+#    ...) honor a "*_SERVER_PORT"-shaped override, e.g.
+#    LIDARR__SERVER__PORT=30099 — though Readarr uses a single underscore,
+#    READARR_SERVER_PORT, instead of the double-underscore XML-nesting
+#    convention the others use.
+#  - LinuxServer's qBittorrent image (and some other linuxserver/* images)
+#    honor WEBUI_PORT, e.g. WEBUI_PORT=8090.
+# Not every app has an equivalent — Sabnzbd, for instance, stores its port
+# only in its own config file inside the container, invisible to the
+# Docker API entirely, so it can't be resolved this way at all.
+_LISTEN_PORT_ENV_RE = re.compile(r"(?:SERVER|WEBUI)_+PORT$", re.IGNORECASE)
+
+
+def _configured_listen_port(info):
+    env = ((info.get("Config") or {}).get("Env")) or []
+    for entry in env:
+        name, _, value = entry.partition("=")
+        if _LISTEN_PORT_ENV_RE.search(name) and value.isdigit():
+            return int(value)
+    return None
+
+
+# network_mode: "container:<id>" — sharing another container's network
+# namespace entirely, the way arr-stack containers commonly route through
+# a VPN gateway like Gluetun. Docker has no concept of "which port belongs
+# to which container sharing this namespace" — only the *target*
+# container's own published-ports mapping exists at all. Two ways this can
+# still be attributed with confidence: one of the known listen-port env
+# vars (see _configured_listen_port, checked first since it reflects the
+# port the app is actually configured to listen on) or the target happening
+# to publish this container's own declared EXPOSEd port under that exact
+# same container-side number (i.e. nobody remapped it and there's no such
+# env var). Anything else — like Sabnzbd, which stores its port only in its
+# own config file with no env var or CLI flag exposing it — isn't
+# distinguishable from a port chosen for some other container sharing the
+# same namespace, so it's deliberately left unresolved rather than guessed.
+def _shared_namespace_ports(container_id, target_id):
+    info = _inspect(container_id)
+    if not info:
+        return []
+    candidates = []
+    configured = _configured_listen_port(info)
+    if configured is not None:
+        candidates.append((configured, "tcp"))
+    exposed = ((info.get("Config") or {}).get("ExposedPorts")) or {}
+    for key in exposed:
+        port, _, proto = key.partition("/")
+        if port.isdigit() and (int(port), proto or "tcp") not in candidates:
+            candidates.append((int(port), proto or "tcp"))
+    target = _inspect(target_id)
+    if not candidates or not target:
+        return []
+    target_ports = ((target.get("NetworkSettings") or {}).get("Ports")) or {}
+    found = []
+    for port, proto in candidates:
+        for binding in target_ports.get(f"{port}/{proto}") or []:
+            host_port = binding.get("HostPort")
+            if host_port and host_port.isdigit():
+                found.append({"host": int(host_port), "container": port, "protocol": proto, "ip": _normalize_ip(binding.get("HostIp"))})
+        if found:
+            break
+    return _dedupe_ports(found)
+
+
+def _shared_namespace_target_name(target_id):
+    target = _inspect(target_id)
+    return (target.get("Name") or "").lstrip("/") if target else None
 
 
 def _ports_for(c):
-    ports = list(dict.fromkeys(
-        f"{p['PublicPort']}:{p['PrivatePort']}/{p.get('Type', 'tcp')}"
+    ports = _dedupe_ports([
+        {"host": p["PublicPort"], "container": p["PrivatePort"], "protocol": p.get("Type", "tcp"), "ip": _normalize_ip(p.get("IP"))}
         for p in c.get("Ports", []) if p.get("PublicPort")
-    ))
-    if not ports and (c.get("HostConfig") or {}).get("NetworkMode") == "host":
-        ports = _host_network_ports(c["Id"])
-    return ports
+    ])
+    if ports:
+        return ports
+    network_mode = (c.get("HostConfig") or {}).get("NetworkMode") or ""
+    if network_mode == "host":
+        return _host_network_ports(c["Id"])
+    if network_mode.startswith("container:"):
+        return _shared_namespace_ports(c["Id"], network_mode.split(":", 1)[1])
+    return []
 
 
-# First host port, if any (published, or inferred for network_mode: host
-# — see _ports_for) — lets the frontend link straight to the
-# already-running container instead of just naming it.
+# Only meaningful when _ports_for() came back empty — names the container
+# this one shares a network namespace with, so the frontend can explain
+# *why* there's nothing to link to instead of just showing a bare dash.
+def _shared_network_with(c):
+    if c.get("Ports"):
+        return None
+    network_mode = (c.get("HostConfig") or {}).get("NetworkMode") or ""
+    if not network_mode.startswith("container:"):
+        return None
+    return _shared_namespace_target_name(network_mode.split(":", 1)[1])
+
+
+# Docker's own summary Status string embeds the healthcheck result for any
+# container that has one — "Up 5 minutes (healthy)", "Up 2 minutes
+# (unhealthy)", "Up 10 seconds (health: starting)" — but says nothing at
+# all when no healthcheck is defined, which is most containers on a given
+# host even now. None here means exactly that: no healthcheck configured,
+# not "checked and something's wrong."
+_HEALTH_RE = re.compile(r"\((?:health: )?(healthy|unhealthy|starting)\)")
+
+
+def _health_for(c):
+    match = _HEALTH_RE.search(c.get("Status", "") or "")
+    return match.group(1) if match else None
+
+
+# First host port, if any (published, or inferred for network_mode: host /
+# a shared network namespace — see _ports_for) — lets the frontend link
+# straight to the already-running container instead of just naming it.
 def _first_host_port(c):
     ports = _ports_for(c)
-    if not ports:
-        return None
-    host_port = ports[0].split(":", 1)[0]
-    return int(host_port) if host_port.isdigit() else None
+    return ports[0]["host"] if ports else None
 
 
 # Checks by actual container name, not project label — the thing Docker
@@ -291,15 +448,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if status != 200:
                 self._send(502, {"error": "Couldn't reach the Docker API."})
                 return
-            containers = [{
-                "id": c["Id"][:12],
-                "name": c["Names"][0].lstrip("/") if c.get("Names") else c["Id"][:12],
-                "image": c.get("Image", ""),
-                "state": c.get("State", "?"),
-                "status": c.get("Status", ""),
-                "ports": _ports_for(c),
-                "project": c.get("Labels", {}).get("com.docker.compose.project", ""),
-            } for c in (data or [])]
+            overrides = _load_link_overrides()
+
+            def _container_dict(c):
+                name = c["Names"][0].lstrip("/") if c.get("Names") else c["Id"][:12]
+                return {
+                    "id": c["Id"][:12],
+                    "name": name,
+                    "image": c.get("Image", ""),
+                    "state": c.get("State", "?"),
+                    "status": c.get("Status", ""),
+                    "health": _health_for(c),
+                    "ports": _ports_for(c),
+                    "sharedNetworkWith": _shared_network_with(c),
+                    "project": c.get("Labels", {}).get("com.docker.compose.project", ""),
+                    "linkOverride": overrides.get(name),
+                }
+
+            containers = [_container_dict(c) for c in (data or [])]
             containers.sort(key=lambda c: c["name"])
             self._send(200, {"containers": containers})
         elif len(parts) == 4 and parts[0:2] == ["api", "containers"] and parts[3] == "logs":
@@ -339,10 +505,38 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send(502, {"error": f"Docker API returned {status}."})
             return
 
+        if len(parts) == 4 and parts[0:2] == ["api", "containers"] and parts[3] == "link-override":
+            if not self._require_enabled():
+                return
+            name = urllib.parse.unquote(parts[2])
+            body = self._read_json_body()
+            port = body.get("port") if isinstance(body, dict) else None
+            scheme = body.get("scheme") if isinstance(body, dict) else None
+            if not isinstance(port, int) or not (1 <= port <= 65535) or scheme not in ("http", "https"):
+                self._send(400, {"error": "invalid port or scheme"})
+                return
+            overrides = _load_link_overrides()
+            overrides[name] = {"port": port, "scheme": scheme}
+            _save_link_overrides(overrides)
+            self._send(200, {"ok": True})
+            return
+
         self._send(404, {"error": "not found"})
 
     def do_DELETE(self):
         parts = [p for p in self.path.split("?")[0].split("/") if p]
+
+        if len(parts) == 4 and parts[0:2] == ["api", "containers"] and parts[3] == "link-override":
+            if not self._require_enabled():
+                return
+            name = urllib.parse.unquote(parts[2])
+            overrides = _load_link_overrides()
+            if name in overrides:
+                del overrides[name]
+                _save_link_overrides(overrides)
+            self._send(200, {"ok": True})
+            return
+
         if len(parts) == 3 and parts[0:2] == ["api", "containers"]:
             if not self._require_enabled():
                 return

@@ -248,6 +248,15 @@
         VPN client (Gluetun, Tailscale) are meant to be used by other containers, not opened directly in a
         browser — that's expected, not a sign something's broken.
       </div>
+      <div class="guide-tip">
+        <strong>Services with their own database wait for it to actually be ready.</strong> Nextcloud, Immich,
+        Authentik and a few others generate a <code>depends_on: … condition: service_healthy</code> for their
+        database/cache container, backed by a <code>healthcheck:</code> on that container — not just
+        "the database's container process has started," which can still be a few seconds before it's actually
+        accepting connections. This only applies to the generated <code>docker-compose.yml</code>; the plain
+        <code>docker run</code> script still starts the database first, just without waiting for it to report
+        healthy, since <code>docker run</code> has no equivalent to Compose's health-based ordering.
+      </div>
     </section>
 
     <section class="guide-section" id="port-checking">
@@ -300,6 +309,16 @@
         It's read-only, and only ever used to read port numbers — but it is more visibility into the host, so
         it's worth adding deliberately rather than by default.
       </p>
+      <p>
+        By default, a published port binds <strong>every</strong> network interface on the host — not just the
+        one you're thinking of. If a service is only ever meant to be reached from this machine itself, or only
+        from your own LAN, that's often more exposure than intended. Next to each port in the Settings panel
+        there's an optional <strong>bind IP</strong> field, shown as <code>ip:port</code> — leave it blank for
+        the current "every interface" default, set it to <code>127.0.0.1</code> to keep a port local-only, or
+        to a specific address (e.g. <code>192.168.1.50</code>) to limit it to one interface. The same host port
+        number can be reused across different bind IPs without conflicting — DoComposer only flags a real
+        conflict (same port <em>and</em> the same IP, or either side left as "every interface").
+      </p>
     </section>
 
     <section class="guide-section" id="deploying">
@@ -309,12 +328,29 @@
         button. When it's visible, clicking it asks for a project name (pre-filled from the service itself),
         checks whether it's already running under a different name, then runs
         <code>docker compose up -d</code> for that exact file immediately, on the host this tool itself is
-        running on — no downloading, no pasting into a terminal or another tool. Its output streams into a
-        panel right over the compose text as it happens, stays there until you close it, and a successful
-        deploy adds an <strong>Open</strong> button straight to the new container's web UI. There's also a
-        <strong>Dashboard</strong> tab, listing every container on the host with start/stop/restart/remove/logs
-        and the same kind of direct open link.
+        running on — no downloading, no pasting into a terminal or another tool. It replaces the compose
+        preview in place with the live output as it streams in, growing to fit the whole log rather than
+        hiding the end of it behind a scrollbar, and a successful deploy adds an <strong>Open</strong> button
+        straight to the new container's web UI right below it.
       </p>
+      <p>
+        There's also a <strong>Dashboard</strong> tab, listing every container on the host — not just ones
+        deployed from here — with start/stop/restart/remove/logs, an IP Address and Ports column (every host
+        port is individually clickable), and a Health column showing Docker's own healthcheck status where one
+        exists (<code>N/A</code> otherwise, for any container, not only ones this tool generated). The name
+        link opens whichever port is actually a container's web UI, including containers that share another
+        container's network namespace entirely — the common pattern for the arr-stack behind a VPN gateway
+        like Gluetun — resolved via known Servarr/LinuxServer environment-variable conventions where possible.
+        When nothing can be resolved automatically (Sabnzbd is the notable case: its port lives only in its own
+        config file, invisible to Docker entirely), a small link icon on that row lets you set the port/scheme
+        by hand — remembered for every device that opens the dashboard, not just the browser that set it.
+      </p>
+      <figure class="guide-illustration">
+        <img src="dashboard-screenshot.png" alt="Screenshot of DoComposer's Dashboard tab, listing over a hundred containers with their state, health, IP address, ports and project, plus start/stop/restart/remove/logs actions for each." loading="lazy" />
+        <figcaption>
+          The Dashboard tab on a real host — every container it can see, not just ones deployed from here.
+        </figcaption>
+      </figure>
       <p>
         Both are off by default, and both turn on together from a single setting: <code>DEPLOY_BASE_DIR</code>,
         a real folder on your host where deployed stacks get written, one subfolder per project name. It has
@@ -335,10 +371,29 @@
         <h3>Generate the snippet</h3>
         <p>Fill in your setup; the exact lines to paste into your own <code>docker-compose.yml</code> update below.</p>
         <div class="compose-builder-widget__fields">
-          <label>
-            Host port
-            <input type="text" id="self-port" value="8190" inputmode="numeric" />
-          </label>
+          <div class="port-bind-group">
+            <label class="port-bind-group__field port-bind-group__field--ip">
+              IP
+              <input
+                type="text"
+                id="self-bind-ip"
+                class="port-bind-group__ip"
+                placeholder="0.0.0.0"
+                title="Optional. Blank binds every network interface (0.0.0.0) — set 127.0.0.1 to keep this reachable only from this host, or a specific LAN IP to limit which network it's exposed to, same as the bind-IP field on the Builder page."
+              />
+            </label>
+            <span class="port-bind-group__sep">:</span>
+            <label class="port-bind-group__field port-bind-group__field--port">
+              Port
+              <input
+                type="text"
+                id="self-port"
+                value="8190"
+                inputmode="numeric"
+                title="8190 is just a default — change it to any free port if that one's already taken on your host."
+              />
+            </label>
+          </div>
           <label class="compose-builder-widget__field--wide">
             Deploy folder path <span class="compose-builder-widget__optional">(leave blank to keep it off)</span>
             <input type="text" id="self-deploy-dir" placeholder="/home/youruser/docker-stacks" />
@@ -457,6 +512,8 @@ docker compose up -d</code></pre>
 
   <script>
     (function () {
+      const DEFAULT_PORT = "8190";
+      const bindIpEl = document.getElementById("self-bind-ip");
       const portEl = document.getElementById("self-port");
       const dirEl = document.getElementById("self-deploy-dir");
       const procEl = document.getElementById("self-proc-mount");
@@ -469,8 +526,12 @@ docker compose up -d</code></pre>
       }
 
       function render() {
-        const port = (portEl.value || "8190").trim() || "8190";
+        const bindIp = bindIpEl.value.trim();
+        bindIpEl.classList.toggle("is-default", bindIp === "");
+        const port = (portEl.value || DEFAULT_PORT).trim() || DEFAULT_PORT;
+        portEl.classList.toggle("is-default", port === DEFAULT_PORT);
         const dir = dirEl.value.trim();
+        dirEl.classList.toggle("is-default", dir === "");
         const withProc = procEl.checked;
 
         const lines = [];
@@ -480,7 +541,7 @@ docker compose up -d</code></pre>
         lines.push("    container_name: docomposer");
         lines.push("    restart: unless-stopped");
         lines.push("    ports:");
-        lines.push(`      - "${port}:80"`);
+        lines.push(`      - "${bindIp ? bindIp + ":" : ""}${port}:80"`);
 
         if (dir) {
           lines.push("    environment:");
@@ -504,7 +565,7 @@ docker compose up -d</code></pre>
         outEl.innerHTML = escapeHtml(lines.join("\n"));
       }
 
-      [portEl, dirEl, procEl].forEach((el) => el.addEventListener("input", render));
+      [bindIpEl, portEl, dirEl, procEl].forEach((el) => el.addEventListener("input", render));
       render();
 
       if (copyBtn) {

@@ -25,7 +25,7 @@ and downloading a compose file, works fine on the live demo above.)
 
 ## What it does
 
-- **65+ services** across media, networking, productivity, security,
+- **80+ services** across media, networking, productivity, security,
   monitoring, automation, AI/developer tools, and container-management
   categories, each with real project icons, a homepage link, and
   searchable tags.
@@ -35,11 +35,24 @@ and downloading a compose file, works fine on the live demo above.)
 - **Editable Settings panel** — every environment variable, volume mount,
   and port is editable before you download anything: change a password
   placeholder, point a volume at your own folder, add extra volumes/ports
-  a service doesn't ship with by default, or override a default port.
+  a service doesn't ship with by default, or override a default port —
+  including an optional **bind IP** per port, so a service can be pinned to
+  `127.0.0.1` or a specific LAN address instead of every interface, which
+  is what an unqualified `host:container` port binds to by default.
 - **Two output formats** — a `docker-compose.yml` + `.env` pair, or the
   same setup as plain `docker run` commands, toggled per file.
-- **Port-conflict detection**, including (optionally) against containers
-  *already running* on the host — see [Live host-port checking](#live-host-port-checking-optional).
+- **Port-conflict detection**, IP-aware (the same host port is fine on two
+  different bind IPs, but not on the same one twice), including
+  (optionally) against containers *already running* on the host — see
+  [Live host-port checking](#live-host-port-checking-optional).
+- **Real startup ordering for services with a database** — Nextcloud,
+  Immich, Authentik, Documenso, Dawarich, WordPress and a few others
+  generate a `healthcheck:` on their database/cache container plus
+  `depends_on: … condition: service_healthy` on the service that needs it,
+  so the app actually waits for the database to accept connections, not
+  just for its container process to have started. Compose-only — the
+  plain `docker run` script still starts the database first, just without
+  waiting for it to report healthy.
 - A **beginner's guide** (`guide.html`) covering installing Docker on
   Windows/macOS/Linux, running the generated files, opening the result in a
   browser, deploying straight from the browser, and GUI alternatives
@@ -127,13 +140,27 @@ runs `docker compose up -d` for it immediately, on the host DoComposer
 itself is running on — no copy-pasting into a terminal or another tool.
 Clicking it asks for a project name (pre-filled from the service's own
 name), checks whether it's already running under a different name first,
-then streams `docker compose up`'s output live into a panel right over the
-compose file as it happens — that panel stays put with the full log until
-you close it, and a successful deploy adds an **Open** button straight to
-the service's own web UI. There's also a **Dashboard** tab listing every
-container on the host, with start/stop/restart/remove/logs, and the same
-kind of direct link to whichever port is actually the container's web UI
-(not just whatever port Docker happens to list first).
+then replaces the compose preview in place with `docker compose up`'s
+output, streaming live and growing to fit the whole log rather than
+capping it behind an internal scrollbar — a successful deploy adds an
+**Open** button straight to the service's own web UI, right below it.
+
+There's also a **Dashboard** tab listing every container on the host —
+not just ones DoComposer deployed — with start/stop/restart/remove/logs,
+an IP Address and Ports column (each host port individually clickable,
+opening straight to it), and a Health column reflecting Docker's own
+healthcheck status where one's configured (`N/A` where it isn't, for any
+container on the host, not just ones this tool generated). The direct
+"open" link on a container's name picks whichever port is actually its
+web UI, not just whatever port Docker happens to list first — including
+containers that share another container's network namespace entirely
+(the arr-stack-behind-a-VPN-gateway pattern), resolved via known
+Servarr/LinuxServer env-var conventions where possible. For the rare case
+nothing can be resolved automatically (Sabnzbd, notably — its port lives
+only in its own config file, invisible to the Docker API), a small link
+icon next to each row lets you set the port/scheme by hand; that override
+is stored server-side, so it's remembered for every device that opens the
+dashboard, not just the browser that set it.
 
 Both are off by default, and both turn on together from one setting:
 
@@ -215,12 +242,17 @@ value you have to supply yourself (see `generatorFor` in `app.js`).
 A few optional fields cover less common cases:
 
 - `dependsOn` — a companion container (a database, a search index, ...):
-  `{key, name, image, volumes, environment}`. **It never gets a published
-  port**, on purpose — this only fits a backing service the top-level
+  `{key, name, image, volumes, environment, healthcheck?}`. **It never gets
+  a published port** — the generator hardcodes an empty `ports` list for
+  every dependency, so this only fits a backing service the top-level
   container talks to internally (Nextcloud's MariaDB, Milvus's etcd/MinIO).
-  A service where *two* containers each need their own port reachable from
-  outside (RustDesk's hbbs+hbbr, for instance) doesn't fit this model and
-  isn't in the catalog for that reason.
+  RustDesk (hbbs+hbbr) is the one catalog entry that doesn't really fit —
+  both need their own published ports — kept in anyway with hbbr's ports
+  left for you to add by hand (see its notes) rather than growing the
+  schema for a case used by one service so far. `healthcheck` —
+  `{test, interval, timeout, retries, startPeriod?}` — makes the
+  *top-level* service's own generated `depends_on` entry for this
+  dependency wait for `service_healthy` instead of just `service_started`.
 - `networkMode: "host"` — for anything that needs host networking (device
   discovery, seeing the LAN directly); pair it with `ports: []`, since
   compose doesn't allow both a `network_mode` and a `ports:` section.
@@ -264,8 +296,9 @@ what extracts `{key, image, sourceUrl, sourceHash}` for every entry (and
 ## Known limitations (good candidates for a v2)
 
 - Compose YAML is hand-built as strings, not through a YAML library — fine
-  while the shape is this simple, but worth revisiting if the schema grows
-  (networks, healthchecks, multiple compose profiles).
+  while the shape is this simple (it already covers `depends_on`/
+  `healthcheck`), but worth revisiting if it grows further (networks,
+  multiple compose profiles).
 - No "troubleshoot my existing compose file" mode — parsing and diagnosing
   arbitrary YAML is a meaningfully harder problem than generating it.
 - Host-port checking only sees the Docker host this container itself has

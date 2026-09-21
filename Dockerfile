@@ -14,7 +14,7 @@ RUN apk add --no-cache curl jq docker-cli docker-cli-compose python3
 RUN rm -rf /usr/share/nginx/html/*
 
 # Copy the app in
-COPY index.html guide.html dashboard.html favicon.svg dockge-demo.gif portainer.gif style.css app.js services.js theme.js nav.js dashboard.js /usr/share/nginx/html/
+COPY index.html guide.html dashboard.html favicon.svg dockge-demo.gif portainer.gif dashboard-screenshot.png style.css app.js services.js theme.js nav.js dashboard.js /usr/share/nginx/html/
 
 # Custom server block — adds the /api/ proxy to deploy-server.py on top of
 # nginx:alpine's normal static-file defaults.
