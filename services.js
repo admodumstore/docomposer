@@ -952,7 +952,7 @@ const SERVICES = {
     homepage: "https://openwebui.com/",
     image: "ghcr.io/open-webui/open-webui:main",
     sourceUrl: "https://raw.githubusercontent.com/open-webui/open-webui/main/README.md",
-    sourceHash: "a486231a68444cee15339ea050fe07e5e1b9b0812abcadecab5749304a81a244",
+    sourceHash: "da3d46f4d7e6c158e13ed91e5e46250d22d278b972d8d1b028f5e0bb62be612b",
     description: "A ChatGPT-style web interface for locally-run LLMs — pairs with Ollama or any OpenAI-compatible API.",
     tags: ["developer", "tools"],
     ports: [{ container: 8080, host: 3000, label: "Web UI" }],
