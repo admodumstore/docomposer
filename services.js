@@ -705,7 +705,15 @@ const SERVICES = {
     name: "Authentik",
     icon: `${ICON_BASE}/authentik.svg`,
     homepage: "https://goauthentik.io/",
-    image: "ghcr.io/goauthentik/server:latest",
+    // Authentik stopped publishing a :latest tag entirely — pin to a real
+    // version (currently this image's own documented default) or the pull
+    // just 404s. sourceUrl is their own generated compose.yml, which
+    // embeds that default tag directly, so its hash changes with every
+    // version bump — exactly the signal needed to catch this going stale
+    // again before it breaks for users.
+    image: "ghcr.io/goauthentik/server:2026.8.3",
+    sourceUrl: "https://docs.goauthentik.io/compose.yml",
+    sourceHash: "5b39fc68f039c4e4f3974e8ceebf3a31d6d1e4e73e33f9271e7de47a95ba7f9e",
     description: "Self-hosted SSO / identity provider — put a single login in front of your other services.",
     tags: ["security", "network", "passwords"],
     ports: [
@@ -727,10 +735,11 @@ const SERVICES = {
       {
         key: "authentik-worker",
         name: "Authentik Worker (background jobs, for Authentik)",
-        image: "ghcr.io/goauthentik/server:latest",
+        image: "ghcr.io/goauthentik/server:2026.8.3",
         volumes: [
           "./authentik/media:/data",
           "./authentik/custom-templates:/templates",
+          "./authentik/certs:/certs",
           "/var/run/docker.sock:/var/run/docker.sock",
         ],
         environment: {
@@ -1001,12 +1010,16 @@ const SERVICES = {
       {
         key: "milvus-minio",
         name: "MinIO (for Milvus)",
-        // MinIO stopped publishing new images to Docker Hub (and pulled
-        // most existing tags) in October 2025 — quay.io/minio/minio is
-        // their own remaining official registry; Docker Hub tags,
-        // including the ones Milvus's own example compose file still
-        // references, no longer resolve at all.
-        image: "quay.io/minio/minio:latest",
+        // Round 2: quay.io/minio/minio (switched to in October 2025, after
+        // MinIO pulled its Docker Hub images) itself started requiring
+        // authentication on 2026-09-24 — MinIO locked down anonymous pulls
+        // there too, steering everyone toward their paid "AIStor" product
+        // (whose free tier still needs requesting a license key, so it's a
+        // non-starter for a zero-config catalog). Milvus's own maintainers
+        // hit the exact same break and now mirror the identical release
+        // under their own namespace instead — same tag, same env vars,
+        // same command, just a different registry, so it's a true drop-in.
+        image: "milvusdb/minio:RELEASE.2024-12-18T13-15-44Z",
         volumes: ["./milvus/minio:/minio_data"],
         environment: { MINIO_ACCESS_KEY: "minioadmin", MINIO_SECRET_KEY: "changeme-minioadmin" },
         extraLines: [`command: minio server /minio_data --console-address ":9001"`],
@@ -1132,7 +1145,7 @@ const SERVICES = {
     homepage: "https://getwud.github.io/wud/",
     image: "getwud/wud:latest",
     sourceUrl: "https://raw.githubusercontent.com/getwud/wud/main/README.md",
-    sourceHash: "b4e027b308e39c4ecca68d291ec48c1d8dea01c6042ec4c852566f8df0878a2b",
+    sourceHash: "4446116c1a747ac0c9c89965f913327708c39a88ac9651d1bedd10b674035e08",
     description: "Watches your running containers and tells you when a newer image is available — an update checker, not an auto-updater.",
     tags: ["docker", "monitoring", "updates"],
     ports: [{ container: 3000, host: 3030, label: "Web UI" }],
