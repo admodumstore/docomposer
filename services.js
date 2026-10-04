@@ -976,7 +976,7 @@ const SERVICES = {
     homepage: "https://milvus.io/",
     image: "milvusdb/milvus:v3.0.2",
     sourceUrl: "https://raw.githubusercontent.com/milvus-io/milvus/master/deployments/docker/standalone/docker-compose.yml",
-    sourceHash: "d0cebb5be44fc78dacad780e059d2f56a894ad07e4cba44937b1b72236b3f39f",
+    sourceHash: "9eaa49f92bd9ebff50a16a032628748461d375bc0ebd5e29ea8d9aafd10a72d2",
     description: "Open-source vector database for storing and searching embeddings at scale — the storage layer behind semantic search and RAG.",
     tags: ["developer", "tools"],
     ports: [
@@ -1323,7 +1323,7 @@ const SERVICES = {
     homepage: "https://caddyserver.com/",
     image: "caddy:latest",
     sourceUrl: "https://raw.githubusercontent.com/caddyserver/caddy/master/README.md",
-    sourceHash: "19a03ce87b6b83b284b085bb675139008f9f2b88367ed466ee0916d7a196396c",
+    sourceHash: "0bc5939a26994a481e65b84b4e1b9ee44dd06796df4a196c75e9bdcdd4868b18",
     description: "Reverse proxy and web server that gets you free, automatic HTTPS certificates with almost no configuration.",
     tags: ["network", "proxy", "ssl"],
     ports: [
@@ -1531,7 +1531,7 @@ const SERVICES = {
     homepage: "https://filebrowserquantum.com/",
     image: "gtstef/filebrowser:beta",
     sourceUrl: "https://raw.githubusercontent.com/gtsteffaniak/filebrowser/main/README.md",
-    sourceHash: "f99b13022681741811c94fd23fcac4ad2745abf631bb2857f35f09e0eb86fe3c",
+    sourceHash: "84cb0a230b9238754aadbebf06879758595fae48ecfd7b7e9b146bdd3818dd94",
     description: "Actively-developed rewrite of Filebrowser — a faster web file manager with previews, sharing and access rules.",
     tags: ["files", "tools"],
     ports: [{ container: 80, host: 8085, label: "Web UI" }],
@@ -1546,7 +1546,7 @@ const SERVICES = {
     homepage: "https://github.com/alexta69/metube",
     image: "ghcr.io/alexta69/metube:latest",
     sourceUrl: "https://raw.githubusercontent.com/alexta69/metube/master/README.md",
-    sourceHash: "32d0fd12f9e9563ca3578009bfd7b356ab405ff3ac95c0f46083a384ffe7e14a",
+    sourceHash: "ea2fbfd2fceac61ea1f6706175c9f70242144747fcdafb9b35cddd9eb1c0b7ed",
     description: "Web UI around yt-dlp for downloading video/audio from YouTube and hundreds of other sites.",
     tags: ["media", "tools"],
     ports: [{ container: 8081, host: 8081, label: "Web UI" }],
@@ -1633,7 +1633,7 @@ const SERVICES = {
     // official-images manifest lists real tags/commits instead, so it
     // actually changes when the image does.
     sourceUrl: "https://raw.githubusercontent.com/docker-library/official-images/master/library/wordpress",
-    sourceHash: "d20474a27715ace6393451688ba6a1bdb6e545c616ce45f16b6269ff7ae9dca6",
+    sourceHash: "fa06945b28c38606906128549c0fc3033d5be5fec8a0eb5469d20b5ffbe4780d",
     description: "The world's most-used content management system — blogs, sites, and everything built on top of it.",
     tags: ["cms", "productivity"],
     ports: [{ container: 80, host: 8091, label: "Web UI" }],
