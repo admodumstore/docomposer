@@ -1142,10 +1142,10 @@ const SERVICES = {
   wud: {
     name: "What's up Docker",
     icon: `${ICON_BASE}/whats-up-docker.svg`,
-    homepage: "https://getwud.github.io/wud/",
+    homepage: "https://getwud.app/",
     image: "getwud/wud:latest",
     sourceUrl: "https://raw.githubusercontent.com/getwud/wud/main/README.md",
-    sourceHash: "4446116c1a747ac0c9c89965f913327708c39a88ac9651d1bedd10b674035e08",
+    sourceHash: "1783838b81aff112ee7a11f6af2bf90c83a77c2b86774eb9fc625bfb3fa2df97",
     description: "Watches your running containers and tells you when a newer image is available — an update checker, not an auto-updater.",
     tags: ["docker", "monitoring", "updates"],
     ports: [{ container: 3000, host: 3030, label: "Web UI" }],
