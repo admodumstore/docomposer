@@ -932,7 +932,7 @@ const SERVICES = {
     homepage: "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/",
     image: "cloudflare/cloudflared:latest",
     sourceUrl: "https://raw.githubusercontent.com/cloudflare/cloudflared/master/README.md",
-    sourceHash: "793f13951568edecf51cd04e5364db7c83a5f15f3c06e17dcaf118fa1b57bf3e",
+    sourceHash: "594d7e9bded68dc969fe82e7d7bdedbb9fdc92e871a75a998402b0d572fb4f2b",
     description: "Exposes a service to the internet through Cloudflare without opening any inbound ports on your router.",
     tags: ["network", "proxy", "security"],
     ports: [],
@@ -1486,8 +1486,8 @@ const SERVICES = {
     icon: `${ICON_BASE}/dozzle.svg`,
     homepage: "https://dozzle.dev/",
     image: "amir20/dozzle:latest",
-    sourceUrl: "https://raw.githubusercontent.com/amir20/dozzle/master/README.md",
-    sourceHash: "ff998a512925194483deb63a4b1fd079db874bf47d94ddc2920ffb656e3e973e",
+    sourceUrl: "https://raw.githubusercontent.com/amir20/dozzle/main/README.md",
+    sourceHash: "22f3ad36fac86a2ed0e5790034d7a911e756d7bc6af1436af921032571071bbe",
     description: "Real-time log viewer for every container on the host, right from a web browser — no configuration needed.",
     tags: ["monitoring", "docker", "logs"],
     ports: [{ container: 8080, host: 8080, label: "Web UI" }],
@@ -1628,12 +1628,12 @@ const SERVICES = {
     icon: `${ICON_BASE}/wordpress.svg`,
     homepage: "https://wordpress.org/",
     image: "wordpress:latest",
-    // The wordpress repo's own README.md is a generated stub pointing
-    // elsewhere (hasn't actually changed since Nov 2024) — this
-    // official-images manifest lists real tags/commits instead, so it
-    // actually changes when the image does.
-    sourceUrl: "https://raw.githubusercontent.com/docker-library/official-images/master/library/wordpress",
-    sourceHash: "fa06945b28c38606906128549c0fc3033d5be5fec8a0eb5469d20b5ffbe4780d",
+    // The Docker Hub page's source text — documents the WORDPRESS_DB_*
+    // variables, port and volume this entry relies on. Not the wordpress
+    // repo's README (a frozen stub) or the official-images manifest (churns
+    // on every patch release, which wordpress:latest absorbs anyway).
+    sourceUrl: "https://raw.githubusercontent.com/docker-library/docs/master/wordpress/content.md",
+    sourceHash: "cab2101691e7e0a8c2aa51a1501dd4d7a9b3fb539701544c2d364296ea1a446c",
     description: "The world's most-used content management system — blogs, sites, and everything built on top of it.",
     tags: ["cms", "productivity"],
     ports: [{ container: 80, host: 8091, label: "Web UI" }],
