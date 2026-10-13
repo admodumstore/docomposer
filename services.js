@@ -1529,15 +1529,20 @@ const SERVICES = {
     name: "Filebrowser Quantum",
     icon: `${ICON_BASE}/filebrowser-quantum.svg`,
     homepage: "https://filebrowserquantum.com/",
-    image: "gtstef/filebrowser:beta",
+    // v2.0.0 went stable on 2026-10-11 (was still beta when this entry was
+    // added) — the project also moved its primary image off Docker Hub
+    // (gtstef/filebrowser) to GHCR. `beta` now tracks the next, 2.1 preview
+    // line instead of 2.0, so staying on the old image+tag would have
+    // quietly started tracking unstable previews.
+    image: "ghcr.io/gtsteffaniak/filebrowser:stable",
     sourceUrl: "https://raw.githubusercontent.com/gtsteffaniak/filebrowser/main/README.md",
-    sourceHash: "84cb0a230b9238754aadbebf06879758595fae48ecfd7b7e9b146bdd3818dd94",
+    sourceHash: "6788ff5079e06767190367d698690ebea67b80966728a9e9ec0906a52d9c6908",
     description: "Actively-developed rewrite of Filebrowser — a faster web file manager with previews, sharing and access rules.",
     tags: ["files", "tools"],
     ports: [{ container: 80, host: 8085, label: "Web UI" }],
     volumes: ["./filebrowser-quantum/folder:/folder", "./filebrowser-quantum/data:/home/filebrowser/data"],
     environment: {},
-    notes: "Needs a config.yaml in ./filebrowser-quantum/data before first run — a minimal one just needs a server.sources entry pointing at /folder (see the project's getting-started docs for the exact format). Default login is admin / admin — change it immediately. `:beta` is this project's own current recommended tag for its actively-developed v2 line, not a warning to avoid it — see their Docker docs if you'd rather pin a specific version.",
+    notes: "Needs a config.yaml in ./filebrowser-quantum/data before first run — a minimal one just needs a server.sources entry pointing at /folder (see the project's getting-started docs for the exact format). Default login is admin / admin — change it immediately. `stable` tracks the current 2.0.x line; pin `2.0-stable` or `2.0.0-stable` instead if you'd rather not move on patch releases.",
   },
 
   metube: {
