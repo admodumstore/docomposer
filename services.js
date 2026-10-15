@@ -974,9 +974,9 @@ const SERVICES = {
     name: "Milvus",
     icon: placeholderIcon("M"),
     homepage: "https://milvus.io/",
-    image: "milvusdb/milvus:v3.0.2",
+    image: "milvusdb/milvus:v3.0.3",
     sourceUrl: "https://raw.githubusercontent.com/milvus-io/milvus/master/deployments/docker/standalone/docker-compose.yml",
-    sourceHash: "9eaa49f92bd9ebff50a16a032628748461d375bc0ebd5e29ea8d9aafd10a72d2",
+    sourceHash: "f0de3ec2f4954bdcb1ec6dcb9862979c00a12632b2181c7529074f510d281573",
     description: "Open-source vector database for storing and searching embeddings at scale — the storage layer behind semantic search and RAG.",
     tags: ["developer", "tools"],
     ports: [
@@ -1025,7 +1025,7 @@ const SERVICES = {
         extraLines: [`command: minio server /minio_data --console-address ":9001"`],
       },
     ],
-    notes: "Standalone Milvus still needs etcd and MinIO as internal storage backends (bundled here as dependencies) — this is the official 3-container standalone layout, not the full distributed/clustered one. Slow to start; give it a minute after 'docker compose up' before the API or the Web UI (at :9091/webui/) responds. Upstream's own compose file now runs a one-shot container first to chown ./milvus/data to the image's internal 'milvus' user before starting — not replicated here (this project doesn't model one-shot init containers). If the milvus container fails to start on a fresh ./milvus/data folder with a permission error, that's why: stop the stack, run 'docker run --rm -v ./milvus/data:/var/lib/milvus milvusdb/milvus:v3.0.2 chown -R milvus:milvus /var/lib/milvus', then start it again.",
+    notes: "Standalone Milvus still needs etcd and MinIO as internal storage backends (bundled here as dependencies) — this is the official 3-container standalone layout, not the full distributed/clustered one. Slow to start; give it a minute after 'docker compose up' before the API or the Web UI (at :9091/webui/) responds. Upstream's own compose file now runs a one-shot container first to chown ./milvus/data to the image's internal 'milvus' user before starting — not replicated here (this project doesn't model one-shot init containers). If the milvus container fails to start on a fresh ./milvus/data folder with a permission error, that's why: stop the stack, run 'docker run --rm -v ./milvus/data:/var/lib/milvus milvusdb/milvus:v3.0.3 chown -R milvus:milvus /var/lib/milvus', then start it again.",
   },
 
   karakeep: {
@@ -1487,7 +1487,7 @@ const SERVICES = {
     homepage: "https://dozzle.dev/",
     image: "amir20/dozzle:latest",
     sourceUrl: "https://raw.githubusercontent.com/amir20/dozzle/main/README.md",
-    sourceHash: "22f3ad36fac86a2ed0e5790034d7a911e756d7bc6af1436af921032571071bbe",
+    sourceHash: "a448519af267e51c0857f3284b066b22fd296fa5c84547f17d244ab245d6424a",
     description: "Real-time log viewer for every container on the host, right from a web browser — no configuration needed.",
     tags: ["monitoring", "docker", "logs"],
     ports: [{ container: 8080, host: 8080, label: "Web UI" }],
