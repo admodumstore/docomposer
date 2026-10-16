@@ -711,9 +711,9 @@ const SERVICES = {
     // embeds that default tag directly, so its hash changes with every
     // version bump — exactly the signal needed to catch this going stale
     // again before it breaks for users.
-    image: "ghcr.io/goauthentik/server:2026.8.3",
+    image: "ghcr.io/goauthentik/server:2026.8.4",
     sourceUrl: "https://docs.goauthentik.io/compose.yml",
-    sourceHash: "5b39fc68f039c4e4f3974e8ceebf3a31d6d1e4e73e33f9271e7de47a95ba7f9e",
+    sourceHash: "bd5ef2e6a58f0efe24994cd1daae12e7589cba0626efa8dc68321552db94d9e8",
     description: "Self-hosted SSO / identity provider — put a single login in front of your other services.",
     tags: ["security", "network", "passwords"],
     ports: [
@@ -735,7 +735,7 @@ const SERVICES = {
       {
         key: "authentik-worker",
         name: "Authentik Worker (background jobs, for Authentik)",
-        image: "ghcr.io/goauthentik/server:2026.8.3",
+        image: "ghcr.io/goauthentik/server:2026.8.4",
         volumes: [
           "./authentik/media:/data",
           "./authentik/custom-templates:/templates",
