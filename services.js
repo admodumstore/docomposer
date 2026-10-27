@@ -711,9 +711,9 @@ const SERVICES = {
     // embeds that default tag directly, so its hash changes with every
     // version bump — exactly the signal needed to catch this going stale
     // again before it breaks for users.
-    image: "ghcr.io/goauthentik/server:2026.8.4",
+    image: "ghcr.io/goauthentik/server:2026.8.5",
     sourceUrl: "https://docs.goauthentik.io/compose.yml",
-    sourceHash: "bd5ef2e6a58f0efe24994cd1daae12e7589cba0626efa8dc68321552db94d9e8",
+    sourceHash: "a3e138b5a85844d15c4a7ba6339997e43c0479d9d198582c67dd19523aadc694",
     description: "Self-hosted SSO / identity provider — put a single login in front of your other services.",
     tags: ["security", "network", "passwords"],
     ports: [
@@ -735,7 +735,7 @@ const SERVICES = {
       {
         key: "authentik-worker",
         name: "Authentik Worker (background jobs, for Authentik)",
-        image: "ghcr.io/goauthentik/server:2026.8.4",
+        image: "ghcr.io/goauthentik/server:2026.8.5",
         volumes: [
           "./authentik/media:/data",
           "./authentik/custom-templates:/templates",
@@ -932,7 +932,7 @@ const SERVICES = {
     homepage: "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/",
     image: "cloudflare/cloudflared:latest",
     sourceUrl: "https://raw.githubusercontent.com/cloudflare/cloudflared/master/README.md",
-    sourceHash: "594d7e9bded68dc969fe82e7d7bdedbb9fdc92e871a75a998402b0d572fb4f2b",
+    sourceHash: "91c3fa30e5637ce4b79a469bfe3783b8bb91b9582b94cb731a07f03b72935669",
     description: "Exposes a service to the internet through Cloudflare without opening any inbound ports on your router.",
     tags: ["network", "proxy", "security"],
     ports: [],
@@ -961,7 +961,7 @@ const SERVICES = {
     homepage: "https://openwebui.com/",
     image: "ghcr.io/open-webui/open-webui:main",
     sourceUrl: "https://raw.githubusercontent.com/open-webui/open-webui/main/README.md",
-    sourceHash: "da3d46f4d7e6c158e13ed91e5e46250d22d278b972d8d1b028f5e0bb62be612b",
+    sourceHash: "8fd5f1fb10d0252cab2de70953169bb16157ab2ffd5cdac1dc93c5e553cd254b",
     description: "A ChatGPT-style web interface for locally-run LLMs — pairs with Ollama or any OpenAI-compatible API.",
     tags: ["developer", "tools"],
     ports: [{ container: 8080, host: 3000, label: "Web UI" }],
@@ -974,9 +974,9 @@ const SERVICES = {
     name: "Milvus",
     icon: placeholderIcon("M"),
     homepage: "https://milvus.io/",
-    image: "milvusdb/milvus:v3.0.3",
+    image: "milvusdb/milvus:v3.0.4",
     sourceUrl: "https://raw.githubusercontent.com/milvus-io/milvus/master/deployments/docker/standalone/docker-compose.yml",
-    sourceHash: "f0de3ec2f4954bdcb1ec6dcb9862979c00a12632b2181c7529074f510d281573",
+    sourceHash: "0457fc7d19784e2d9e320b21a08f24419cd7343f2fa855485112d9ad8d7e2b78",
     description: "Open-source vector database for storing and searching embeddings at scale — the storage layer behind semantic search and RAG.",
     tags: ["developer", "tools"],
     ports: [
@@ -1025,7 +1025,7 @@ const SERVICES = {
         extraLines: [`command: minio server /minio_data --console-address ":9001"`],
       },
     ],
-    notes: "Standalone Milvus still needs etcd and MinIO as internal storage backends (bundled here as dependencies) — this is the official 3-container standalone layout, not the full distributed/clustered one. Slow to start; give it a minute after 'docker compose up' before the API or the Web UI (at :9091/webui/) responds. Upstream's own compose file now runs a one-shot container first to chown ./milvus/data to the image's internal 'milvus' user before starting — not replicated here (this project doesn't model one-shot init containers). If the milvus container fails to start on a fresh ./milvus/data folder with a permission error, that's why: stop the stack, run 'docker run --rm -v ./milvus/data:/var/lib/milvus milvusdb/milvus:v3.0.3 chown -R milvus:milvus /var/lib/milvus', then start it again.",
+    notes: "Standalone Milvus still needs etcd and MinIO as internal storage backends (bundled here as dependencies) — this is the official 3-container standalone layout, not the full distributed/clustered one. Slow to start; give it a minute after 'docker compose up' before the API or the Web UI (at :9091/webui/) responds. Upstream's own compose file now runs a one-shot container first to chown ./milvus/data to the image's internal 'milvus' user before starting — not replicated here (this project doesn't model one-shot init containers). If the milvus container fails to start on a fresh ./milvus/data folder with a permission error, that's why: stop the stack, run 'docker run --rm -v ./milvus/data:/var/lib/milvus milvusdb/milvus:v3.0.4 chown -R milvus:milvus /var/lib/milvus', then start it again.",
   },
 
   karakeep: {
@@ -1355,7 +1355,7 @@ const SERVICES = {
     homepage: "https://dawarich.app/",
     image: "freikin/dawarich:latest",
     sourceUrl: "https://raw.githubusercontent.com/Freika/dawarich/master/docker/docker-compose.yml",
-    sourceHash: "d1c24f65a75b2242e720c441bc72de24c1152d63ce26198c386f07092df7e1f7",
+    sourceHash: "93ba8dcaf4db00bccfa8891c780f643597cf9edb5946c44f3ee7804e0472c026",
     description: "Self-hosted alternative to Google Timeline — import your location history and browse it on a map.",
     tags: ["tools", "maps"],
     ports: [{ container: 3000, host: 3000, label: "Web UI" }],
@@ -1375,15 +1375,21 @@ const SERVICES = {
       DATABASE_NAME: "dawarich_production",
       TIME_ZONE: "Etc/UTC",
       SECRET_KEY_BASE: "changeme-generate-with-openssl-rand-hex-64",
+      // As of 1.17.0, background jobs run embedded in this same container
+      // instead of a separate sidekiq one — WEB_CONCURRENCY must be 0, or
+      // every extra web process would start its own set of job threads.
+      SIDEKIQ_EMBEDDED: "true",
+      WEB_CONCURRENCY: "0",
+      BACKGROUND_PROCESSING_CONCURRENCY: "2",
     },
-    extraLines: ["entrypoint: web-entrypoint.sh"],
-    runExtraArgs: ["--entrypoint=web-entrypoint.sh"],
+    extraLines: ["entrypoint: web-entrypoint.sh", "stop_grace_period: 60s"],
+    runExtraArgs: ["--entrypoint=web-entrypoint.sh", "--stop-timeout=60"],
     runCommandArgs: ["bin/rails", "server", "-p", "3000", "-b", "::"],
     dependsOn: [
       {
         key: "dawarich-redis",
         name: "Redis (for Dawarich)",
-        image: "redis:7.4-alpine",
+        image: "redis:8-alpine",
         volumes: ["./dawarich/shared:/data"],
         environment: {},
         healthcheck: {
@@ -1412,31 +1418,8 @@ const SERVICES = {
           startPeriod: "30s",
         },
       },
-      {
-        key: "dawarich-sidekiq",
-        name: "Sidekiq Worker (for Dawarich)",
-        image: "freikin/dawarich:latest",
-        volumes: [
-          "./dawarich/public:/var/app/public",
-          "./dawarich/watched:/var/app/tmp/imports/watched",
-          "./dawarich/storage:/var/app/storage",
-        ],
-        environment: {
-          RAILS_ENV: "production",
-          REDIS_URL: "redis://dawarich-redis:6379",
-          DATABASE_HOST: "dawarich-db",
-          DATABASE_PORT: "5432",
-          DATABASE_USERNAME: "postgres",
-          DATABASE_PASSWORD: "changeme",
-          DATABASE_NAME: "dawarich_production",
-          SECRET_KEY_BASE: "changeme-generate-with-openssl-rand-hex-64",
-        },
-        extraLines: ["entrypoint: sidekiq-entrypoint.sh"],
-        runExtraArgs: ["--entrypoint=sidekiq-entrypoint.sh"],
-        runCommandArgs: ["sidekiq"],
-      },
     ],
-    notes: "This is 4 containers (app, background worker, PostgreSQL+PostGIS, Redis). SECRET_KEY_BASE needs a real value — Rails won't start with the placeholder. DATABASE_PASSWORD must be identical across the app, sidekiq worker and database sections.",
+    notes: "This is 3 containers (app, PostgreSQL+PostGIS, Redis) — as of Dawarich 1.17.0, background jobs run embedded in the app container itself rather than a separate sidekiq one, so it's one less container than before. SECRET_KEY_BASE needs a real value — Rails won't start with the placeholder. DATABASE_PASSWORD must be identical between the app and database sections.",
   },
 
   documenso: {
