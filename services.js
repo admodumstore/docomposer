@@ -974,9 +974,9 @@ const SERVICES = {
     name: "Milvus",
     icon: placeholderIcon("M"),
     homepage: "https://milvus.io/",
-    image: "milvusdb/milvus:v3.0.4",
+    image: "milvusdb/milvus:v3.0.5",
     sourceUrl: "https://raw.githubusercontent.com/milvus-io/milvus/master/deployments/docker/standalone/docker-compose.yml",
-    sourceHash: "0457fc7d19784e2d9e320b21a08f24419cd7343f2fa855485112d9ad8d7e2b78",
+    sourceHash: "e39a9bf367feab93c6c2d70f4aec3d64b16018e6bc64c9db475485499990a8e8",
     description: "Open-source vector database for storing and searching embeddings at scale — the storage layer behind semantic search and RAG.",
     tags: ["developer", "tools"],
     ports: [
@@ -1025,7 +1025,7 @@ const SERVICES = {
         extraLines: [`command: minio server /minio_data --console-address ":9001"`],
       },
     ],
-    notes: "Standalone Milvus still needs etcd and MinIO as internal storage backends (bundled here as dependencies) — this is the official 3-container standalone layout, not the full distributed/clustered one. Slow to start; give it a minute after 'docker compose up' before the API or the Web UI (at :9091/webui/) responds. Upstream's own compose file now runs a one-shot container first to chown ./milvus/data to the image's internal 'milvus' user before starting — not replicated here (this project doesn't model one-shot init containers). If the milvus container fails to start on a fresh ./milvus/data folder with a permission error, that's why: stop the stack, run 'docker run --rm -v ./milvus/data:/var/lib/milvus milvusdb/milvus:v3.0.4 chown -R milvus:milvus /var/lib/milvus', then start it again.",
+    notes: "Standalone Milvus still needs etcd and MinIO as internal storage backends (bundled here as dependencies) — this is the official 3-container standalone layout, not the full distributed/clustered one. Slow to start; give it a minute after 'docker compose up' before the API or the Web UI (at :9091/webui/) responds. Upstream's own compose file now runs a one-shot container first to chown ./milvus/data to the image's internal 'milvus' user before starting — not replicated here (this project doesn't model one-shot init containers). If the milvus container fails to start on a fresh ./milvus/data folder with a permission error, that's why: stop the stack, run 'docker run --rm -v ./milvus/data:/var/lib/milvus milvusdb/milvus:v3.0.5 chown -R milvus:milvus /var/lib/milvus', then start it again.",
   },
 
   karakeep: {
@@ -1039,7 +1039,7 @@ const SERVICES = {
     homepage: "https://karakeep.app/",
     image: "ghcr.io/karakeep-app/karakeep:release",
     sourceUrl: "https://raw.githubusercontent.com/karakeep-app/karakeep/main/docker/docker-compose.yml",
-    sourceHash: "9b77a5fd786e696193714cf8308e79f08f61da837a6a753c3ee517e1876f88db",
+    sourceHash: "ea2246589852669bc555a89e21eae5c1dd45119a46054f6a3f458ff386cecdd4",
     description: "Self-hosted bookmark manager — saves links, images and notes, full-text indexes them, and can auto-tag with AI (formerly called Hoarder).",
     tags: ["bookmarks", "productivity"],
     ports: [{ container: 3000, host: 3020, label: "Web UI" }],
@@ -1055,7 +1055,7 @@ const SERVICES = {
       {
         key: "karakeep-meilisearch",
         name: "Meilisearch (for Karakeep)",
-        image: "getmeili/meilisearch:v1.41.0",
+        image: "getmeili/meilisearch:v1.55.0",
         volumes: ["./karakeep/meilisearch:/meili_data"],
         environment: {
           MEILI_MASTER_KEY: "changeme-generate-with-openssl-rand-base64-36",
@@ -1145,7 +1145,7 @@ const SERVICES = {
     homepage: "https://getwud.app/",
     image: "getwud/wud:latest",
     sourceUrl: "https://raw.githubusercontent.com/getwud/wud/main/README.md",
-    sourceHash: "1783838b81aff112ee7a11f6af2bf90c83a77c2b86774eb9fc625bfb3fa2df97",
+    sourceHash: "b3e477b1f2f1419aa25605b0d45feac6e6b0f73e11fb689d34e0887800224d02",
     description: "Watches your running containers and tells you when a newer image is available — an update checker, not an auto-updater.",
     tags: ["docker", "monitoring", "updates"],
     ports: [{ container: 3000, host: 3030, label: "Web UI" }],
