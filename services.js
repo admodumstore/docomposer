@@ -1563,7 +1563,7 @@ const SERVICES = {
     homepage: "https://github.com/alexta69/metube",
     image: "ghcr.io/alexta69/metube:latest",
     sourceUrl: "https://raw.githubusercontent.com/alexta69/metube/master/README.md",
-    sourceHash: "ea2fbfd2fceac61ea1f6706175c9f70242144747fcdafb9b35cddd9eb1c0b7ed",
+    sourceHash: "06b1d175c834ae158cab68518388e9d3595a0cc544dfb84740fed3b818828d30",
     description: "Web UI around yt-dlp for downloading video/audio from YouTube and hundreds of other sites.",
     tags: ["media", "tools"],
     ports: [{ container: 8081, host: 8081, label: "Web UI" }],
