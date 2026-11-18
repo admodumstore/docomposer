@@ -1189,7 +1189,7 @@ const SERVICES = {
     homepage: "https://github.com/Tecnativa/docker-socket-proxy",
     image: "tecnativa/docker-socket-proxy:latest",
     sourceUrl: "https://raw.githubusercontent.com/Tecnativa/docker-socket-proxy/master/README.md",
-    sourceHash: "ea2158e1cd235aa5167c6e4343fcf3444c22655c25f64134c7a437a05ca53832",
+    sourceHash: "6232a1916e1d7c9df318f00219bf6e0602bb4a09d81f7bbde53da247e34c99f7",
     description: "A hardened, read-only-by-default proxy in front of the Docker socket — lets other containers query Docker without giving them root on the host.",
     tags: ["security", "docker"],
     ports: [],
@@ -1205,7 +1205,7 @@ const SERVICES = {
       SECRETS: "0",
       EXEC: "0",
     },
-    notes: "No host port is published on purpose — other containers reach it over the internal Docker network at docker-socket-proxy:2375 (set their DOCKER_HOST to that). Ships read-only; a tool that needs to start/stop containers through it additionally needs POST: 1 plus the specific ALLOW_START/ALLOW_STOP/ALLOW_RESTARTS variables — see the project's README for the full list.",
+    notes: "No host port is published on purpose — other containers reach it over the internal Docker network at docker-socket-proxy:2375 (set their DOCKER_HOST to that). Ships read-only; a tool that needs to start/stop containers through it additionally needs POST: 1 plus the specific ALLOW_START/ALLOW_STOP/ALLOW_RESTARTS variables — see the project's README for the full list. `latest` is an alias for `lts` and is rebuilt weekly from haproxy:lts (the old per-release version tags are deprecated); pin by digest if you need an image that never changes under you.",
   },
 
   remotely: {
